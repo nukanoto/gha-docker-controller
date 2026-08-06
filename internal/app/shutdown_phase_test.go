@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -184,10 +183,9 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 
 // TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases verifies with real
 // objects that on a listener join timeout shutdown returns immediately
-// without running later phases (health shutdown, lock release). This is the
-// contract that structurally prevents races from closing components in use
-// by running handlers; the health server keeps answering and the lock is not
-// released, confirmed with real objects.
+// without running later phases. This is the contract that structurally
+// prevents races from closing components in use by running handlers; the
+// health server keeps answering, confirmed with real objects.
 func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	joinTimeout := 100 * time.Millisecond
 	a := newShutdownTestApp(&config.Config{
@@ -207,14 +205,6 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 		t.Fatalf("health.Start が error を返した: %v", err)
 	}
 	a.health = hs
-	// Also observe that the lock is not released, so pass a lockFile holding
-	// a real file.
-	lock, err := os.CreateTemp(t.TempDir(), "lock")
-	if err != nil {
-		t.Fatalf("CreateTemp が error を返した: %v", err)
-	}
-	a.lock = &lockFile{f: lock}
-
 	// Hold the listener until the join timeout.
 	release := make(chan struct{})
 	addWaitGate(a, release)
@@ -234,8 +224,7 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 		t.Fatalf("shutdown が join timeout 後も return しませんでした")
 	}
 
-	// Later phases do not run. The health server keeps answering and the
-	// lock stays held.
+	// Later phases do not run. The health server keeps answering.
 	resp, err := http.Get("http://" + hs.Addr().String() + "/readyz")
 	if err != nil {
 		t.Fatalf("join timeout 後に health server が応答しませんでした: %v", err)
@@ -244,13 +233,8 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("join timeout 後の /readyz が %d を返しました (want 503)", resp.StatusCode)
 	}
-	if a.lock.f == nil {
-		t.Fatalf("join timeout 後に lock が解放されました")
-	}
-
-	// Cleanup: release the gate to end the listener-side goroutine, and
-	// close the health server and lock the same way the normal shutdown path
-	// does.
+	// Cleanup: release the gate to end the listener-side goroutine and close
+	// the health server.
 	close(release)
 	wgDone := make(chan struct{})
 	go func() {
@@ -267,7 +251,6 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	if err := hs.Shutdown(ctx); err != nil {
 		t.Fatalf("health.Shutdown が error を返した: %v", err)
 	}
-	a.lock.release()
 }
 
 // TestStartup_ReadinessLifecycle fixes the startup readiness transition

@@ -9,20 +9,17 @@
 # The only thing passed to a runner is the JIT config; no setup mounts this
 # image's config/secret or the Docker socket into a runner.
 #
-# The three bind mounts required at run time (docker run):
+# The two bind mounts required at run time (docker run):
 #   -v /var/run/docker.sock:/var/run/docker.sock
 #       Docker daemon socket. The default host is unix:///var/run/docker.sock.
-#   -v /run/gha-docker-controller:/run/gha-docker-controller
-#       Host lock directory. It rejects a second process on the same host,
-#       so it shares the same path as the systemd distribution.
 #   -v /etc/gha-docker-controller:/etc/gha-docker-controller:ro
 #       Config and secret files (App private key, ...). The default path is
 #       /etc/gha-docker-controller/config.yaml.
 #   With PAT auth, pass the env var with -e GITHUB_TOKEN=...
 #   (the PAT is not put in a file or in the YAML).
 #
-# The controller creates the lock directory with 0750. Inside the container
-# it runs as root and connects to the host's root:docker 0660 Docker socket.
+# Inside the container it runs as root and connects to the host's root:docker
+# 0660 Docker socket.
 
 # --- build stage ---
 # The Go toolchain pins a version tag matching go 1.25.3 by a multi-arch
@@ -69,7 +66,7 @@ FROM scratch
 COPY --from=build /out/gha-docker-controller /usr/local/bin/gha-docker-controller
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-# Runs as root to access the Docker socket and the host lock directory.
+# Runs as root to access the Docker socket.
 # Runner containers run as User=runner, so the controller privileges are not
 # inherited.
 ENTRYPOINT ["/usr/local/bin/gha-docker-controller", "serve"]

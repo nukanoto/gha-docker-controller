@@ -1,6 +1,6 @@
 // shutdown.go implements shutdown. Order is: stop new work (run cancel),
 // listener join, scaler shutdown, health shutdown, session close, Docker
-// close, lock release. Each phase uses an independent timeout context created
+// close. Each phase uses an independent timeout context created
 // fresh from context.Background(); expired contexts are never reused in later
 // phases. If the listener join or the scaler watch join times out, shutdown
 // returns immediately without closing later components and leaves it to
@@ -87,7 +87,7 @@ func (a *app) shutdown() error {
 	// context bounded by the larger handler timeout: provisioning or cleanup.
 	// On timeout, warn and return immediately
 	// without running the remaining phases, leaving it to process exit. Not
-	// closing the scaler/session/Docker/lock in use by running handlers
+	// closing the scaler/session/Docker in use by running handlers
 	// structurally prevents close races. Leftovers are recovered by the next
 	// startup's Recover.
 	joinCtx, joinCancel := newShutdownPhaseContext(a.listenerJoinTimeout())
@@ -141,16 +141,12 @@ func (a *app) shutdown() error {
 		}
 	}
 
-	// phase 5: release the Docker connection and the host lock. Synchronous
-	// work that needs no context.
+	// phase 5: close the Docker connection. Synchronous work that needs no
+	// context.
 	if a.docker != nil {
 		if err := a.docker.Close(); err != nil {
 			a.logger.Warn("docker close failed", "error", err)
 		}
-	}
-	if a.lock != nil {
-		a.lock.release()
-		a.lock = nil
 	}
 	a.logger.Info("shutdown complete")
 	return scalerErr

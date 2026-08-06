@@ -1,6 +1,6 @@
 // Package app provides orchestration for serve and check. It takes a loaded
-// config.Config and runs the host lock, startup order, shutdown order, and
-// the read-only check. serve uses the official actions/scaleset listener
+// config.Config and runs startup order, shutdown order, and the read-only
+// check. serve uses the official actions/scaleset listener
 // directly; message polling, ack, and desired computation are delegated to
 // the official listener and a thin DockerScaler. This package is only
 // responsible for component construction order and lifecycle. All errors
@@ -41,7 +41,6 @@ type app struct {
 	cfg    *config.Config
 	logger *slog.Logger
 
-	lock    *lockFile
 	docker  *docker.Client
 	session *scaleset.ListenerClient
 	scaler  *controller.DockerScaler
@@ -70,13 +69,12 @@ type app struct {
 // not modified afterwards. version and commit are build info provided by
 // cli/buildinfo. A nil logger discards logs.
 //
-// Startup order is fixed: host lock, Docker host verification, Scale Set
-// get-or-create, DockerScaler construction and Recover, official message
-// session, official listener, health server, listener goroutine. If the host
-// lock cannot be acquired, another process is running on the same host and a
-// fatal error is returned. shutdown always runs in the fixed order and never
-// deletes the Scale Set. The returned error joins the main error with the
-// shutdown join timeout / cleanup failure and contains no secrets.
+// Startup order is fixed: Docker host verification, Scale Set get-or-create,
+// DockerScaler construction and Recover, official message session, official
+// listener, health server, listener goroutine. shutdown always runs in the
+// fixed order and never deletes the Scale Set. The returned error joins the
+// main error with the shutdown join timeout / cleanup failure and contains no
+// secrets.
 func Serve(cfg *config.Config, version, commit string, logger *slog.Logger) error {
 	if cfg == nil {
 		return errors.New("serve: nil config")
@@ -103,7 +101,7 @@ func Serve(cfg *config.Config, version, commit string, logger *slog.Logger) erro
 		err = a.wait(signalCtx)
 	}
 	// shutdown always runs even on error paths during startup, reliably
-	// releasing the lock and the Docker connection. Even on a normal SIGTERM
+	// closing the Docker connection. Even on a normal SIGTERM
 	// shutdown, listener/scaler join timeouts and shutdown cleanup failures
 	// are returned as errors so the process exits nonzero and triggers
 	// systemd Restart=on-failure.
@@ -117,15 +115,7 @@ func Serve(cfg *config.Config, version, commit string, logger *slog.Logger) erro
 func (a *app) startup(signalCtx context.Context, version, commit string) error {
 	cfg := a.cfg
 
-	// 1. Host lock, held on the fixed path for the whole process lifetime.
-	lock, err := acquireLock()
-	if err != nil {
-		return fmt.Errorf("serve: %w", err)
-	}
-	a.lock = lock
-	a.logger.Info("host lock acquired", "path", lockPath)
-
-	// 2. Docker client and host verification.
+	// 1. Docker client and host verification.
 	dc, err := docker.New(cfg.Docker.Host, dockerHTTPTimeout)
 	if err != nil {
 		return fmt.Errorf("serve: %w", err)
