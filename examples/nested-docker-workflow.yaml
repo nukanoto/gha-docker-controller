@@ -1,0 +1,130 @@
+# Example workflow for the nested-docker profile of gha-docker-controller.
+#
+# This workflow runs inner Docker build / compose / container / service on a
+# nested-docker profile runner (a separate dockerd inside a runsc sandbox).
+# Commit it to .github/workflows/ of a dedicated repository to use it.
+#
+# Prerequisites:
+#   - runs-on must exactly match the scaleSet.name of the E2E config (a
+#     dedicated name starting with ghadc-e2e-). Do not use production Scale
+#     Set names.
+#   - The job container image is set by the required workflow_dispatch input
+#     nested_image. Always enter the project nested image
+#     (images/nested-docker/) in repository@sha256:<64 lowercase hex> digest
+#     form. The runner overrides the job container entrypoint to tail, so
+#     dockerd does not start inside the job container. The image must have
+#     docker CLI, git, curl, and bash.
+#   - Inner dockerd always has iptables / ip6tables disabled, so do not use
+#     -p / --expose or compose user-defined networks. Connect the job
+#     container and service containers with options: --network host and use
+#     only explicit localhost ports.
+#   - Install compose as a standalone binary pinned by version + sha256
+#     (never latest).
+#   - Set nestedDocker.storageSize in the E2E config large enough to cover
+#     pulling and building inner images (for example 16GiB).
+name: gha-docker-controller nested docker example
+
+on:
+  workflow_dispatch:
+    inputs:
+      nested_image:
+        # Required input. No default.
+        description: >-
+          job container に使う project の nested image
+          (images/nested-docker/) を repository@sha256:<64 lowercase hex>
+          形式の digest で指定する。
+        required: true
+        type: string
+
+jobs:
+  nested:
+    # Specify the dedicated nested Scale Set name (scaleSet.name of the E2E config).
+    runs-on: production-nested
+    container:
+      # Use the nested_image input value (repository@sha256:<64 lowercase hex>
+      # form) as-is. No default or floating tag.
+      image: ${{ inputs.nested_image }}
+      # Use inner --network host only.
+      options: --network host
+    services:
+      # Service containers also use --network host. They share the outer
+      # container's netns, so no port publish (-p) is needed and localhost:80
+      # is reachable.
+      svc:
+        # Pin by version tag (never latest). In production, replace with a digest.
+        image: nginx:1.27.4
+        options: --network host
+    steps:
+      # Pin actions by version tag. For stronger security, replace with a commit SHA.
+      - uses: actions/checkout@v4
+
+      - name: inner dockerd への接続確認
+        run: docker version --format 'server={{.Server.Version}}'
+
+      - name: service container への接続確認 (localhost 明示 port)
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:80/ >/dev/null; then
+              echo "service is reachable on localhost:80"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "service container did not respond on localhost:80" >&2
+          exit 1
+
+      - name: docker build (busybox httpd の image を build)
+        run: |
+          printf 'e2e-ok\n' > index.html
+          cat > Dockerfile <<'EOF'
+          FROM busybox:1.36.1
+          COPY index.html /var/www/index.html
+          CMD ["httpd", "-f", "-p", "8080", "-h", "/var/www"]
+          EOF
+          docker build -t e2e-app:pin .
+
+      - name: compose binary の導入 (version + sha256 pin)
+        run: |
+          # Same sha256 as the compose v5.4.0 that docker-library/docker
+          # commit 0906c956e96cf64d40b9a8c7a14e5b407602c853 (2026-08-03)
+          # ships in 29/dind. Never use latest or a version-only pin.
+          curl -fsSL -o docker-compose \
+            https://github.com/docker/compose/releases/download/v5.4.0/docker-compose-linux-x86_64
+          echo '837fd1d35bf6a494f41b5b5988269a7be79de337cf1a1a6ff0e45ab51bb4e9be  docker-compose' | sha256sum -c -
+          install -m 0755 docker-compose /usr/local/bin/docker-compose
+          docker-compose version
+
+      - name: "docker compose up (network_mode: host)"
+        run: |
+          # compose creates a user-defined network by default, but the inner
+          # bridge DNS is unreachable from the runsc sandbox, so use
+          # network_mode: host and networks: {} to prevent creating one.
+          cat > docker-compose.yml <<'EOF'
+          services:
+            app:
+              image: e2e-app:pin
+              network_mode: host
+          networks: {}
+          EOF
+          docker-compose up -d
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/ | grep -q e2e-ok
+          docker-compose down
+
+      - name: docker run (--network host の 1 回限り container)
+        run: |
+          docker run -d --name e2e-container --network host e2e-app:pin \
+            httpd -f -p 8081 -h /var/www
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8081/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8081/ | grep -q e2e-ok
+          docker rm -f e2e-container

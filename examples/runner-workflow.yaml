@@ -1,0 +1,18 @@
+# Minimal example workflow for gha-docker-controller.
+# The Scale Set System label matches the Scale Set name.
+# Set runs-on to the same value as scaleSet.name in the config.
+# This workflow targets standard profile runners; see
+# examples/nested-docker-workflow.yaml for the nested-docker profile example.
+name: gha-docker-controller example
+
+on:
+  workflow_dispatch:
+
+jobs:
+  example:
+    # Specify the Scale Set name (scaleSet.name: production in config.example.yaml).
+    runs-on: production
+    steps:
+      # Pin actions by version tag. For stronger security, replace with a commit SHA.
+      - uses: actions/checkout@v4
+      - run: echo "hello from a scale set runner"

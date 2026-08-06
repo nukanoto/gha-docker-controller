@@ -1,0 +1,146 @@
+# Production config example for gha-docker-controller (standard profile).
+# All fields are shown explicitly. Never put secret values in this file. The
+# PAT comes from the GITHUB_TOKEN environment variable; the App private key is
+# referenced by path only.
+# Defaults are fixed by the following conventions, and a missing mandatory
+# field becomes an error.
+
+
+github:
+  # Only GitHub.com is supported. GHES, ghe.com, github.localhost and
+  # port/query/fragment are rejected.
+  url: https://github.com
+  # Either organization or repository.
+  scope: organization
+  # Organization name for the organization scope, owner name for the
+  # repository scope.
+  owner: your-organization
+  # Leave empty for the organization scope (required for the repository
+  # scope).
+  repository: ""
+  # GitHub App (standard) and PAT (GITHUB_TOKEN environment variable) are
+  # mutually exclusive; configure exactly one of them.
+  app:
+    # Numeric GitHub App ID (positive integer).
+    id: 123456
+    # Installation ID (positive integer).
+    installationId: 654321
+    # Path of the private key (PEM). Symlinks and non-regular files are
+    # rejected, and any group/other permission bit (0077) raises a warning.
+    # Recommended permission is 0600.
+    privateKeyFile: /etc/gha-docker-controller/github-app.pem
+  # To use a PAT, remove app and set the PAT in the GITHUB_TOKEN environment
+  # variable. Do not write it in YAML. For systemd distributions,
+  # deploy/gha-docker-controller.service loads a 0600 environment file via
+  # EnvironmentFile.
+
+scaleSet:
+  # Scale Set name. Also used as the basis for container names and labels.
+  name: production
+  # Runner group name. Default is default.
+  runnerGroup: default
+  # Lower bound of runners kept at all times. Default is 0.
+  minRunners: 0
+  # Upper bound of runners. Mandatory and must be >= minRunners.
+  maxRunners: 4
+
+docker:
+  # Only an absolute unix:// path is allowed. tcp:// and ssh:// are rejected.
+  host: unix:///var/run/docker.sock
+  # OCI runtime name. Default is runsc. For standard, any registered runtime
+  # ([A-Za-z0-9_.-]+) such as runc can be set besides runsc.
+  # nested-docker is fixed to runsc.
+  runtime: runsc
+  # Default network. host, none, container and container:<id-or-name> are
+  # rejected.
+  network: bridge
+  # always / if-not-present / never. Default is if-not-present.
+  pullPolicy: if-not-present
+
+runner:
+  # For production, latest (as a tag or with a digest) and references without
+  # tag/digest are forbidden; pin the digest. This digest is the
+  # multi-platform index digest of the official runner 2.336.0.
+  image: ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda
+  # standard or nested-docker. Default is standard.
+  profile: standard
+  # CPU limit. Mandatory and must be > 0.
+  cpu: "2"
+  # Memory limit. Mandatory. Units such as k/kb/kib and m/mb/mib are all
+  # powers of 1024 (same as Docker RAMInBytes).
+  memory: 4GiB
+  # Memory+swap limit. Mandatory and must be >= memory. Unlimited values
+  # (0, -1, unlimited) are rejected.
+  memorySwap: 4GiB
+  # Process count limit. Mandatory and must be > 0.
+  pidsLimit: 512
+  # Deadline for provisioning one runner. Default is 5m. Also used as the
+  # wait limit for joining the official listener at shutdown.
+  provisioningTimeout: 5m
+  # Grace period when stopping. Default is 30s.
+  stopTimeout: 30s
+  # Additional ulimits (Docker form name=soft[:hard]). soft/hard must be
+  # positive integers.
+  # ulimit:
+  #   - nofile=65536
+  # Additional tmpfs mounts (map[path]options). The value is the options; an
+  # empty string means no options. Normalized in ascending path order; the
+  # old list form is rejected. dest must be an absolute path.
+  # tmpfs:
+  #   /run: "size=64MiB"
+  # true is rejected because the official runner writes to /home/runner.
+  readOnlyRootfs: false
+  # Anything other than ALL is rejected.
+  capDrop: ["ALL"]
+  # The standard profile cannot add capabilities (only the 17 for
+  # nested-docker are allowed).
+  # capAdd: []
+  # seccomp is given as a JSON file (daemon default when unset). unconfined
+  # is rejected.
+  # seccomp: /etc/gha-docker-controller/seccomp.json
+  # apparmor is given as a profile name (daemon default when unset).
+  # unconfined is rejected.
+  # apparmor: my-profile
+  # When runner.network is unset it inherits docker.network; a mismatch when
+  # both are set is rejected.
+  # network: bridge
+  # DNS server list.
+  # dns:
+  #   - 1.1.1.1
+  # /etc/hosts entries (host:ip or host:host-gateway).
+  # extraHosts:
+  #   - host.internal:192.168.0.10
+  # false is rejected.
+  noNewPrivileges: true
+
+nestedDocker:
+  # Storage kind for /var/lib/docker. Only tmpfs is allowed and it is also
+  # the default.
+  storage: tmpfs
+  # Size used for the /var/lib/docker tmpfs in the nested-docker profile.
+  # Default is 2GiB.
+  storageSize: 2GiB
+  # The nested-docker profile requires docker.runtime to be runsc. The host
+  # daemon runsc runtimeArgs (--net-raw, --allow-packet-socket-write) cannot
+  # be verified through the Docker API, so the operator must check daemon.json
+  # manually.
+
+health:
+  # Listen address of the health endpoint (host:port).
+  listen: 127.0.0.1:8080
+
+shutdown:
+  # How Busy runners are treated. leave (default) keeps them running; stop
+  # stops them after the grace period.
+  busyRunnerPolicy: leave
+  # Time budget for runner cleanup. Default is 2m. With the defaults the
+  # maximum stop time is provisioning timeout (5m, listener join) + 2m + 5s
+  # (health) + 30s (session) = 455s, covered by TimeoutStopSec=480 of the
+  # systemd unit.
+  gracePeriod: 2m
+
+log:
+  # json (default) or text.
+  format: json
+  # debug / info (default) / warn / error.
+  level: info
