@@ -5,7 +5,7 @@
 // prove create permission when the Scale Set is absent. It also checks Docker
 // ping/version/runtime/network, the image pull policy/OCI contract, and
 // resource/profile validation. The
-// nested-docker runtimeArgs cannot be verified through the official Docker
+// dind-runner runtimeArgs cannot be verified through the official Docker
 // API, so a warning and the operator's manual verification are the
 // responsibility boundary. All errors contain no secrets.
 package app
@@ -38,7 +38,7 @@ import (
 //     If the Scale Set is missing, a warning is logged that create permission
 //     cannot be proven read-only; that alone is not a failure.
 //  2. Docker ping/version (API >= 1.42, Engine >= 28.0) and runtime
-//     registration. For nested-docker the runtime name is defensively
+//     registration. For dind-runner the runtime name is defensively
 //     re-checked to be runsc, and runtimeArgs always produce a warning.
 //  3. Inspect the existing network (never create or delete).
 //  4. Apply the image pull policy (pull is the allowed mutation) and the
@@ -93,17 +93,17 @@ func Check(cfg *config.Config, version, commit string, logger *slog.Logger) erro
 		return fmt.Errorf("check: %w", err)
 	}
 	logger.Info("docker runtime registered", "runtime", cfg.Docker.Runtime, "is_default", rt.IsDefault)
-	if cfg.Runner.Profile == config.ProfileNestedDocker {
-		// Defensively re-check that the nested-docker runtime name is runsc
+	if cfg.Runner.Profile == config.ProfileDindRunner {
+		// Defensively re-check that the dind-runner runtime name is runsc
 		// (also guaranteed by static validation).
 		if cfg.Docker.Runtime != config.DefaultRuntime {
-			return fmt.Errorf("check: nested-docker profile requires docker.runtime %q, got %q",
+			return fmt.Errorf("check: dind-runner profile requires docker.runtime %q, got %q",
 				config.DefaultRuntime, cfg.Docker.Runtime)
 		}
 		// runtimeArgs (--net-raw, --allow-packet-socket-write) cannot be
 		// introspected through the official Docker API, so always warn. The
 		// operator checks the host side manually in daemon.json (see README).
-		logger.Warn("nested-docker runtime args (--net-raw --allow-packet-socket-write) cannot be verified via the Docker API; verify them manually in the host daemon.json")
+		logger.Warn("dind-runner runtime args (--net-raw --allow-packet-socket-write) cannot be verified via the Docker API; verify them manually in the host daemon.json")
 	} else if len(rt.Args) > 0 {
 		// Even for standard, runtimeArgs introspection is unreliable, so
 		// observed args only produce a warning.

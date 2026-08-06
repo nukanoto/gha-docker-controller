@@ -10,19 +10,19 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/config"
 )
 
-// OCI label contract for the nested profile.
-// The project-provided nested-docker derived image must set these two labels
+// OCI label contract for the dind profile.
+// The project-provided dind-runner derived image must set these two labels
 // at build time. The operator pins the digest after build/push in the config,
 // and check requires the digest pin plus both labels.
 const (
-	// NestedProfileLabelKey is the label key for the nested-docker derived image profile.
-	NestedProfileLabelKey = "io.github.nukanoto.gha-docker-controller.profile"
-	// NestedProfileLabelValue is the fixed profile label value.
-	NestedProfileLabelValue = "nested-docker-v1"
-	// NestedInnerDockerLabelKey is the label key for the inner dockerd version.
-	NestedInnerDockerLabelKey = "io.github.nukanoto.gha-docker-controller.inner-docker"
-	// NestedInnerDockerLabelValue is the fixed inner dockerd version.
-	NestedInnerDockerLabelValue = "29.6.1"
+	// DindProfileLabelKey is the label key for the dind-runner derived image profile.
+	DindProfileLabelKey = "io.github.nukanoto.gha-docker-controller.profile"
+	// DindProfileLabelValue is the fixed profile label value.
+	DindProfileLabelValue = "dind-runner-v1"
+	// DindInnerDockerLabelKey is the label key for the inner dockerd version.
+	DindInnerDockerLabelKey = "io.github.nukanoto.gha-docker-controller.inner-docker"
+	// DindInnerDockerLabelValue is the fixed inner dockerd version.
+	DindInnerDockerLabelValue = "29.6.1"
 )
 
 // ImageInspect inspects an image in the local image store.
@@ -84,11 +84,11 @@ func (c *Client) EnsureImage(ctx context.Context, ref, policy string) error {
 }
 
 // ValidateImageContract checks the OCI label contract of the image for the
-// profile. The nested-docker profile strictly requires the two labels of the
+// profile. The dind-runner profile strictly requires the two labels of the
 // dedicated derived image; standard has no label contract, so nothing is
 // checked. The image must already be prepared by EnsureImage.
 func (c *Client) ValidateImageContract(ctx context.Context, ref, profile string) error {
-	if profile != config.ProfileNestedDocker {
+	if profile != config.ProfileDindRunner {
 		return nil
 	}
 	img, err := c.ImageInspect(ctx, ref)
@@ -96,14 +96,14 @@ func (c *Client) ValidateImageContract(ctx context.Context, ref, profile string)
 		return err
 	}
 	if img.Config == nil {
-		return fmt.Errorf("image %s has no config; nested-docker profile requires labels %s=%s and %s=%s", ref, NestedProfileLabelKey, NestedProfileLabelValue, NestedInnerDockerLabelKey, NestedInnerDockerLabelValue)
+		return fmt.Errorf("image %s has no config; dind-runner profile requires labels %s=%s and %s=%s", ref, DindProfileLabelKey, DindProfileLabelValue, DindInnerDockerLabelKey, DindInnerDockerLabelValue)
 	}
 	labels := img.Config.Labels
-	if labels[NestedProfileLabelKey] != NestedProfileLabelValue {
-		return fmt.Errorf("image %s is not the project nested-docker image: label %s must be %q", ref, NestedProfileLabelKey, NestedProfileLabelValue)
+	if labels[DindProfileLabelKey] != DindProfileLabelValue {
+		return fmt.Errorf("image %s is not the project dind-runner image: label %s must be %q", ref, DindProfileLabelKey, DindProfileLabelValue)
 	}
-	if labels[NestedInnerDockerLabelKey] != NestedInnerDockerLabelValue {
-		return fmt.Errorf("image %s has an unexpected inner docker version: label %s must be %q", ref, NestedInnerDockerLabelKey, NestedInnerDockerLabelValue)
+	if labels[DindInnerDockerLabelKey] != DindInnerDockerLabelValue {
+		return fmt.Errorf("image %s has an unexpected inner docker version: label %s must be %q", ref, DindInnerDockerLabelKey, DindInnerDockerLabelValue)
 	}
 	return nil
 }

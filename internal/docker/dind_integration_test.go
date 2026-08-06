@@ -1,12 +1,12 @@
 //go:build integration
 
-// nested_integration_test.go verifies every path of the nested-docker
+// dind_integration_test.go verifies every path of the dind-runner
 // profile against a real Docker daemon + runsc. It covers only the public
 // production paths (BuildManagedSpec + CreateManaged, inspect/start/wait/log,
 // ValidateImageContract); no mock/fake/stub is used. A missing daemon is a
 // fail; a missing runsc registration or missing visual runtimeArgs
 // verification is a skip with a reason. The image is the pinned digest of
-// GHDC_TEST_NESTED_IMAGE, or is built from images/nested-docker with the SDK
+// GHDC_TEST_DIND_IMAGE, or is built from images/dind-runner with the SDK
 // ImageBuild.
 //
 // The inner dockerd is verified only through container logs / wait, never
@@ -46,27 +46,27 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// Env vars for the nested test.
+// Env vars for the dind test.
 const (
-	// nestedRuntimeArgsVerifiedEnv declares that the operator visually
+	// dindRuntimeArgsVerifiedEnv declares that the operator visually
 	// verified the runsc runtimeArgs of the host daemon. Without it the test
 	// skips with a reason.
-	nestedRuntimeArgsVerifiedEnv = "GHDC_TEST_HOST_RUNTIME_ARGS_VERIFIED"
-	// nestedImageEnv is the pinned-digest nested image.
-	nestedImageEnv = "GHDC_TEST_NESTED_IMAGE"
-	// nestedContextEnv overrides the build context of images/nested-docker.
-	nestedContextEnv = "GHDC_TEST_NESTED_CONTEXT"
-	// nestedTimeoutEnv is the wait timeout for natural/signal exit. Default 7 minutes.
-	nestedTimeoutEnv = "GHDC_TEST_NESTED_TIMEOUT"
+	dindRuntimeArgsVerifiedEnv = "GHDC_TEST_HOST_RUNTIME_ARGS_VERIFIED"
+	// dindImageEnv is the pinned-digest dind image.
+	dindImageEnv = "GHDC_TEST_DIND_IMAGE"
+	// dindContextEnv overrides the build context of images/dind-runner.
+	dindContextEnv = "GHDC_TEST_DIND_CONTEXT"
+	// dindTimeoutEnv is the wait timeout for natural/signal exit. Default 7 minutes.
+	dindTimeoutEnv = "GHDC_TEST_DIND_TIMEOUT"
 )
 
-// buildNestedImage packs the context into a tar, runs SDK ImageBuild and
+// buildDindImage packs the context into a tar, runs SDK ImageBuild and
 // checks the build stream errors to the end.
-func buildNestedImage(t *testing.T, c *Client, contextDir, tag string) {
+func buildDindImage(t *testing.T, c *Client, contextDir, tag string) {
 	t.Helper()
-	buildContext, err := tarNestedContext(contextDir)
+	buildContext, err := tarDindContext(contextDir)
 	if err != nil {
-		t.Fatalf("nested image context を tar にできませんでした: %v", err)
+		t.Fatalf("dind image context を tar にできませんでした: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
 	defer cancel()
@@ -98,9 +98,9 @@ func buildNestedImage(t *testing.T, c *Client, contextDir, tag string) {
 	}
 }
 
-// tarNestedContext packs the Dockerfile and entrypoint.sh into a tar
+// tarDindContext packs the Dockerfile and entrypoint.sh into a tar
 // archive.
-func tarNestedContext(contextDir string) (io.Reader, error) {
+func tarDindContext(contextDir string) (io.Reader, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	for _, name := range []string{"Dockerfile", "entrypoint.sh"} {
@@ -118,24 +118,24 @@ func tarNestedContext(contextDir string) (io.Reader, error) {
 	return &buf, tw.Close()
 }
 
-// prepareNestedImage EnsureImages the pinned digest, or builds
-// images/nested-docker (the build is removed best-effort).
-func prepareNestedImage(t *testing.T, c *Client) (imageRef string) {
+// prepareDindImage EnsureImages the pinned digest, or builds
+// images/dind-runner (the build is removed best-effort).
+func prepareDindImage(t *testing.T, c *Client) (imageRef string) {
 	t.Helper()
-	if ref := os.Getenv(nestedImageEnv); ref != "" {
+	if ref := os.Getenv(dindImageEnv); ref != "" {
 		pullCtx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
 		defer cancel()
 		if err := c.EnsureImage(pullCtx, ref, config.PullPolicyIfNotPresent); err != nil {
-			t.Fatalf("pinned nested image %s を用意できませんでした: %v", ref, err)
+			t.Fatalf("pinned dind image %s を用意できませんでした: %v", ref, err)
 		}
 		return ref
 	}
-	contextDir := os.Getenv(nestedContextEnv)
+	contextDir := os.Getenv(dindContextEnv)
 	if contextDir == "" {
-		contextDir = "../../images/nested-docker"
+		contextDir = "../../images/dind-runner"
 	}
-	tag := fmt.Sprintf("ghadc-test/nested-integration:%012x", rand.Uint64())
-	buildNestedImage(t, c, contextDir, tag)
+	tag := fmt.Sprintf("ghadc-test/dind-integration:%012x", rand.Uint64())
+	buildDindImage(t, c, contextDir, tag)
 	t.Cleanup(func() { removeTestImage(t, c, tag) })
 	return tag
 }
@@ -173,16 +173,16 @@ func forceRemoveTestContainer(t *testing.T, c *Client, containerID string, ident
 	}
 }
 
-// verifyNestedInspectFields verifies with inspect alone that the outer
+// verifyDindInspectFields verifies with inspect alone that the outer
 // container contract (non-privileged, runsc, 17 caps, /var/lib/docker
 // tmpfs, non-host, no-new-privileges, resources) really exists on the
 // daemon.
-func verifyNestedInspectFields(t *testing.T, in container.InspectResponse, cfg *config.Config, input ManagedSpecInput) {
+func verifyDindInspectFields(t *testing.T, in container.InspectResponse, cfg *config.Config, input ManagedSpecInput) {
 	t.Helper()
 	cc := in.Config
 	hc := in.HostConfig
 
-	if cc.User != "0:0" || len(cc.Entrypoint) != 1 || cc.Entrypoint[0] != "/usr/local/bin/gha-nested-entrypoint" ||
+	if cc.User != "0:0" || len(cc.Entrypoint) != 1 || cc.Entrypoint[0] != "/usr/local/bin/gha-dind-entrypoint" ||
 		len(cc.Cmd) != 1 || cc.Cmd[0] != "/home/runner/run.sh" || cc.WorkingDir != "/home/runner" {
 		t.Fatalf("daemon 上の Config が契約と一致しません: user=%q entrypoint=%v cmd=%v workdir=%q",
 			cc.User, cc.Entrypoint, cc.Cmd, cc.WorkingDir)
@@ -206,7 +206,7 @@ func verifyNestedInspectFields(t *testing.T, in container.InspectResponse, cfg *
 		t.Fatalf("daemon 上の runtime/network/privileged が不正です: runtime=%q network=%q privileged=%v readonly=%v auto-remove=%v",
 			hc.Runtime, hc.NetworkMode, hc.Privileged, hc.ReadonlyRootfs, hc.AutoRemove)
 	}
-	if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" || !slices.Equal(hc.CapAdd, config.NestedCapabilities()) {
+	if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" || !slices.Equal(hc.CapAdd, config.DindCapabilities()) {
 		t.Fatalf("daemon 上の capability が契約と一致しません: drop=%v add=%v", hc.CapDrop, hc.CapAdd)
 	}
 	if hc.IpcMode != container.IPCModePrivate || hc.CgroupnsMode != container.CgroupnsModePrivate ||
@@ -222,13 +222,13 @@ func verifyNestedInspectFields(t *testing.T, in container.InspectResponse, cfg *
 	if len(hc.Binds) != 0 || len(hc.Devices) != 0 || len(hc.DeviceRequests) != 0 || len(hc.VolumesFrom) != 0 {
 		t.Fatalf("daemon 上に禁止 mount/device が存在します: binds=%v devices=%v", hc.Binds, hc.Devices)
 	}
-	// /var/lib/docker is a tmpfs (mode 0700, size nestedDocker.storageSize).
+	// /var/lib/docker is a tmpfs (mode 0700, size dindRunner.storageSize).
 	if len(hc.Mounts) != 1 {
 		t.Fatalf("daemon 上の mount が 1 個ではありません: %+v", hc.Mounts)
 	}
 	m := hc.Mounts[0]
 	if m.Type != mount.TypeTmpfs || m.Target != "/var/lib/docker" || m.Source != "" || m.TmpfsOptions == nil ||
-		m.TmpfsOptions.SizeBytes != int64(cfg.NestedDocker.StorageSize) || m.TmpfsOptions.Mode != 0o700 {
+		m.TmpfsOptions.SizeBytes != int64(cfg.DindRunner.StorageSize) || m.TmpfsOptions.Mode != 0o700 {
 		t.Fatalf("daemon 上の /var/lib/docker tmpfs が不正です: %+v", m)
 	}
 
@@ -288,9 +288,9 @@ func runtimeNames(runtimes map[string]system.RuntimeWithStatus) []string {
 	return names
 }
 
-// TestNestedLifecycle_RunscDaemon checks the prerequisites, prepares the
+// TestDindLifecycle_RunscDaemon checks the prerequisites, prepares the
 // image, checks the OCI label contract and verifies two paths.
-func TestNestedLifecycle_RunscDaemon(t *testing.T) {
+func TestDindLifecycle_RunscDaemon(t *testing.T) {
 	c, err := New(integrationHost, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("Docker client を作成できませんでした (daemon 不在とみなして fail): %v", err)
@@ -304,82 +304,82 @@ func TestNestedLifecycle_RunscDaemon(t *testing.T) {
 		t.Fatalf("Docker Info を取得できませんでした: %v", err)
 	}
 
-	// nested-docker is fixed to runsc. A missing registration is a skip with
+	// dind-runner is fixed to runsc. A missing registration is a skip with
 	// a reason (no runc substitute).
 	if _, ok := info.Info.Runtimes["runsc"]; !ok {
-		t.Skipf("Docker daemon に runsc runtime が登録されていません (nested-docker profile は runsc 固定)。登録済み runtime: %v", runtimeNames(info.Info.Runtimes))
+		t.Skipf("Docker daemon に runsc runtime が登録されていません (dind-runner profile は runsc 固定)。登録済み runtime: %v", runtimeNames(info.Info.Runtimes))
 	}
 	// runtimeArgs cannot be introspected, so skip with a reason unless the
 	// visual verification is declared.
-	if os.Getenv(nestedRuntimeArgsVerifiedEnv) != "1" {
-		t.Skipf("host daemon の runsc runtimeArgs (--net-raw、--allow-packet-socket-write) の目視確認がありません。%s=1 を設定してください", nestedRuntimeArgsVerifiedEnv)
+	if os.Getenv(dindRuntimeArgsVerifiedEnv) != "1" {
+		t.Skipf("host daemon の runsc runtimeArgs (--net-raw、--allow-packet-socket-write) の目視確認がありません。%s=1 を設定してください", dindRuntimeArgsVerifiedEnv)
 	}
 
-	imageRef := prepareNestedImage(t, c)
-	if err := c.ValidateImageContract(t.Context(), imageRef, config.ProfileNestedDocker); err != nil {
-		t.Fatalf("nested image の OCI label contract を満たしません: %v", err)
+	imageRef := prepareDindImage(t, c)
+	if err := c.ValidateImageContract(t.Context(), imageRef, config.ProfileDindRunner); err != nil {
+		t.Fatalf("dind image の OCI label contract を満たしません: %v", err)
 	}
 	// Create the unmanaged sentinel as a verification target (shared helper
 	// with standard).
 	createUnmanagedSentinel(t, c, imageRef)
 
-	t.Run("自然終了と dockerd _ping", func(t *testing.T) { runNestedContainer(t, c, imageRef, nestedModeNatural) })
-	t.Run("signal 転送と cleanup", func(t *testing.T) { runNestedContainer(t, c, imageRef, nestedModeSignal) })
+	t.Run("自然終了と dockerd _ping", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeNatural) })
+	t.Run("signal 転送と cleanup", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeSignal) })
 }
 
-// nestedRunMode represents the verification path of a container.
-type nestedRunMode string
+// dindRunMode represents the verification path of a container.
+type dindRunMode string
 
 const (
-	// nestedModeNatural verifies dockerd _ping, runner start and cleanup
+	// dindModeNatural verifies dockerd _ping, runner start and cleanup
 	// with a natural exit (immediate exit on the invalid JIT).
-	nestedModeNatural nestedRunMode = "natural"
-	// nestedModeSignal sends SIGTERM while waiting for dockerd startup and
+	dindModeNatural dindRunMode = "natural"
+	// dindModeSignal sends SIGTERM while waiting for dockerd startup and
 	// verifies signal forwarding and dockerd stop cleanup.
-	nestedModeSignal nestedRunMode = "signal"
+	dindModeSignal dindRunMode = "signal"
 )
 
-// nestedTestTimeout returns the GHDC_TEST_NESTED_TIMEOUT value (default 7
+// dindTestTimeout returns the GHDC_TEST_DIND_TIMEOUT value (default 7
 // minutes; only a positive ParseDuration, invalid is a fail).
-func nestedTestTimeout(t *testing.T) time.Duration {
+func dindTestTimeout(t *testing.T) time.Duration {
 	t.Helper()
-	raw := os.Getenv(nestedTimeoutEnv)
+	raw := os.Getenv(dindTimeoutEnv)
 	if raw == "" {
 		return 7 * time.Minute
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
-		t.Fatalf("%s が正の duration ではありません: %q", nestedTimeoutEnv, raw)
+		t.Fatalf("%s が正の duration ではありません: %q", dindTimeoutEnv, raw)
 	}
 	return d
 }
 
-// runNestedContainer creates a nested container with unique managed labels
+// runDindContainer creates a dind container with unique managed labels
 // through the production path and runs the verification for the mode.
 // t.Cleanup force-cleans it.
-func runNestedContainer(t *testing.T, c *Client, imageRef string, mode nestedRunMode) {
+func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode) {
 	scaleSetID := rand.Int64N(1<<62) + 1
 	runnerID := rand.Int64N(1<<62) + 1
 	suffix := strconv.FormatInt(scaleSetID, 16)
-	runnerName := model.RunnerName("nested-integration-test", suffix)
+	runnerName := model.RunnerName("dind-integration-test", suffix)
 	if !model.ValidRunnerName(runnerName) {
 		t.Fatalf("runner name が canonical 形式になりません: %q", runnerName)
 	}
-	containerName := model.ContainerName("nested-integration-test", runnerID, suffix)
+	containerName := model.ContainerName("dind-integration-test", runnerID, suffix)
 	if len(containerName) > 63 {
 		t.Fatalf("container name が 63 byte を超えています: %q", containerName)
 	}
 	identity := model.RunnerIdentity{ScaleSetID: scaleSetID, RunnerID: runnerID, RunnerName: runnerName}
 
-	cfg := testConfig(t, config.ProfileNestedDocker, "runsc")
+	cfg := testConfig(t, config.ProfileDindRunner, "runsc")
 	cfg.Runner.Image = imageRef
 	// inner dockerd may use /tmp, so do not add the standard /tmp ro tmpfs.
 	cfg.Runner.Tmpfs = nil
 	input := testInput(cfg)
 	input.Identity = identity
 	input.ContainerName = containerName
-	input.JITConfig = "nested-integration-invalid-jit-config"
-	input.ControllerInstance = "nested-integration-test"
+	input.JITConfig = "dind-integration-invalid-jit-config"
+	input.ControllerInstance = "dind-integration-test"
 	input.CreatedAt = time.Now().UTC()
 
 	spec, err := BuildManagedSpec(input)
@@ -407,20 +407,20 @@ func runNestedContainer(t *testing.T, c *Client, imageRef string, mode nestedRun
 	if err := model.ValidateLabels(labels, identity); err != nil {
 		t.Fatalf("daemon 上の label が managed の contract を満たしません: %v", err)
 	}
-	verifyNestedInspectFields(t, inspect.Container, cfg, input)
+	verifyDindInspectFields(t, inspect.Container, cfg, input)
 
 	if _, err := c.containerStart(t.Context(), containerID, mobyclient.ContainerStartOptions{}); err != nil {
 		t.Fatalf("containerStart が失敗しました (runsc の runtimeArgs と resource を確認してください): %v", err)
 	}
-	verifyNestedRun(t, c, containerID, mode)
+	verifyDindRun(t, c, containerID, mode)
 }
 
-// verifyNestedRun exits the container through the mode path (natural /
+// verifyDindRun exits the container through the mode path (natural /
 // SIGTERM) and verifies dockerd startup, privilege drop and cleanup with
 // logs / wait only.
-func verifyNestedRun(t *testing.T, c *Client, containerID string, mode nestedRunMode) {
-	timeout := nestedTestTimeout(t) // Applied to both natural and signal exit.
-	if mode == nestedModeSignal {
+func verifyDindRun(t *testing.T, c *Client, containerID string, mode dindRunMode) {
+	timeout := dindTestTimeout(t) // Applied to both natural and signal exit.
+	if mode == dindModeSignal {
 		// Send SIGTERM after the marker appears (TERM during dockerd
 		// startup can be 143, INT after runner start can be 130).
 		if !waitForLogMarker(t, c, containerID, "Waiting for Docker daemon", 90*time.Second) {
@@ -432,7 +432,7 @@ func verifyNestedRun(t *testing.T, c *Client, containerID string, mode nestedRun
 	}
 	status, logs := waitExit(t, c, containerID, timeout)
 	switch mode {
-	case nestedModeNatural:
+	case dindModeNatural:
 		if status != 0 {
 			t.Fatalf("container の終了 code が 0 ではありません: %d。stderr 抜粋: %s", status, snippet(logs.Stderr))
 		}
@@ -455,7 +455,7 @@ func verifyNestedRun(t *testing.T, c *Client, containerID string, mode nestedRun
 		if !strings.Contains(logs.Stdout, "Runner listener exit with terminated error") {
 			t.Fatalf("runner の JIT 終了が確認できません。stdout 抜粋: %s", snippet(logs.Stdout))
 		}
-	case nestedModeSignal:
+	case dindModeSignal:
 		// {0, 130, 143} are allowed (137 SIGKILL is rejected).
 		if status == 137 || (status != 143 && status != 130 && status != 0) {
 			t.Fatalf("container の終了 code が graceful な範囲にありません: %d", status)

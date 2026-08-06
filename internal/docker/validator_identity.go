@@ -37,16 +37,16 @@ func validateSpecInput(cfg *config.Config, input ManagedSpecInput) error {
 		return fmt.Errorf("runner name %q is not a valid canonical runner name", input.Identity.RunnerName)
 	}
 
-	// Profile and runtime consistency. nested-docker is fixed to runsc;
+	// Profile and runtime consistency. dind-runner is fixed to runsc;
 	// standard allows a registered runtime name matching [A-Za-z0-9_.-]+.
 	switch cfg.Runner.Profile {
 	case config.ProfileStandard:
 		if !validRuntimeName(cfg.Docker.Runtime) {
 			return fmt.Errorf("docker.runtime %q is not a valid runtime name for standard profile", cfg.Docker.Runtime)
 		}
-	case config.ProfileNestedDocker:
-		if cfg.Docker.Runtime != nestedRuntime {
-			return fmt.Errorf("docker.runtime %q is not allowed for nested-docker profile (requires %q)", cfg.Docker.Runtime, nestedRuntime)
+	case config.ProfileDindRunner:
+		if cfg.Docker.Runtime != dindRuntime {
+			return fmt.Errorf("docker.runtime %q is not allowed for dind-runner profile (requires %q)", cfg.Docker.Runtime, dindRuntime)
 		}
 	default:
 		return fmt.Errorf("runner.profile %q is unknown", cfg.Runner.Profile)
@@ -70,8 +70,8 @@ func validateSpecInput(cfg *config.Config, input ManagedSpecInput) error {
 	if cfg.Runner.PidsLimit <= 0 {
 		return fmt.Errorf("runner.pidsLimit must be positive (missing resource)")
 	}
-	if cfg.NestedDocker.StorageSize <= 0 {
-		return fmt.Errorf("nestedDocker.storageSize must be positive")
+	if cfg.DindRunner.StorageSize <= 0 {
+		return fmt.Errorf("dindRunner.storageSize must be positive")
 	}
 
 	return validateSpecInputSecurity(cfg)

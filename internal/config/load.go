@@ -141,9 +141,9 @@ func resolve(raw *rawConfig) (*Config, error) {
 	}
 	if raw.Runner.CapAdd != nil {
 		c.Runner.CapAdd = *raw.Runner.CapAdd
-	} else if c.Runner.Profile == ProfileNestedDocker {
-		// nested-docker applies the 17 nestedCapAdd capabilities by default.
-		c.Runner.CapAdd = NestedCapabilities()
+	} else if c.Runner.Profile == ProfileDindRunner {
+		// dind-runner applies the 17 dindCapAdd capabilities by default.
+		c.Runner.CapAdd = DindCapabilities()
 	}
 	if raw.Runner.Seccomp != nil {
 		c.Runner.Seccomp = *raw.Runner.Seccomp
@@ -160,12 +160,12 @@ func resolve(raw *rawConfig) (*Config, error) {
 	c.Runner.DNS = raw.Runner.DNS
 	c.Runner.ExtraHosts = raw.Runner.ExtraHosts
 
-	// NestedDocker
-	c.NestedDocker.Storage = strings.TrimSpace(optionalString(raw.NestedDocker.Storage, DefaultNestedStorage))
-	if raw.NestedDocker.StorageSize != nil {
-		c.NestedDocker.StorageSize = *raw.NestedDocker.StorageSize
+	// DindRunner
+	c.DindRunner.Storage = strings.TrimSpace(optionalString(raw.DindRunner.Storage, DefaultDindStorage))
+	if raw.DindRunner.StorageSize != nil {
+		c.DindRunner.StorageSize = *raw.DindRunner.StorageSize
 	} else {
-		c.NestedDocker.StorageSize = DefaultNestedStorageSize
+		c.DindRunner.StorageSize = DefaultDindStorageSize
 	}
 
 	// Health / Shutdown / Log

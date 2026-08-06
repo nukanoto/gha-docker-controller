@@ -17,7 +17,7 @@ import (
 // incomplete specs. The checks directly encode the following contract:
 //   - zero value / incomplete spec (nil Config/HostConfig, identity, name,
 //     image)
-//   - profile and runtime consistency (nested-docker: literal runsc;
+//   - profile and runtime consistency (dind-runner: literal runsc;
 //     standard: a valid runtime name)
 //   - positive resources (CPU, memory, swap>=memory, pids)
 //   - host namespaces (PID/UTS/Userns) forbidden; IPC/cgroup private; host
@@ -52,9 +52,9 @@ func validateManagedSpec(spec ManagedSpec) error {
 		if !validRuntimeName(spec.runtime) {
 			return fmt.Errorf("refusing to create: standard profile requires a valid runtime name, got %q", spec.runtime)
 		}
-	case config.ProfileNestedDocker:
-		if spec.runtime != nestedRuntime {
-			return fmt.Errorf("refusing to create: nested-docker profile requires runtime %q, got %q", nestedRuntime, spec.runtime)
+	case config.ProfileDindRunner:
+		if spec.runtime != dindRuntime {
+			return fmt.Errorf("refusing to create: dind-runner profile requires runtime %q, got %q", dindRuntime, spec.runtime)
 		}
 	default:
 		return fmt.Errorf("refusing to create: unknown profile %q", spec.profile)
@@ -89,12 +89,12 @@ func validateManagedSpec(spec ManagedSpec) error {
 		if len(cfg.Entrypoint) != 0 {
 			return fmt.Errorf("refusing to create: standard profile must not have an entrypoint")
 		}
-	case config.ProfileNestedDocker:
-		if cfg.User != nestedUser {
-			return fmt.Errorf("refusing to create: nested-docker profile user must be %q, got %q", nestedUser, cfg.User)
+	case config.ProfileDindRunner:
+		if cfg.User != dindUser {
+			return fmt.Errorf("refusing to create: dind-runner profile user must be %q, got %q", dindUser, cfg.User)
 		}
-		if len(cfg.Entrypoint) != 1 || cfg.Entrypoint[0] != nestedEntrypoint {
-			return fmt.Errorf("refusing to create: nested-docker profile entrypoint must be [%s]", nestedEntrypoint)
+		if len(cfg.Entrypoint) != 1 || cfg.Entrypoint[0] != dindEntrypoint {
+			return fmt.Errorf("refusing to create: dind-runner profile entrypoint must be [%s]", dindEntrypoint)
 		}
 	}
 
@@ -108,11 +108,11 @@ func validateManagedSpec(spec ManagedSpec) error {
 		if len(hostCfg.CapAdd) != 0 {
 			return fmt.Errorf("refusing to create: standard profile must not add capabilities")
 		}
-	case config.ProfileNestedDocker:
-		allowed := config.NestedCapabilities()
+	case config.ProfileDindRunner:
+		allowed := config.DindCapabilities()
 		for _, cap := range hostCfg.CapAdd {
 			if !slices.Contains(allowed, cap) {
-				return fmt.Errorf("refusing to create: capability %q is not in the nested-docker allowed set", cap)
+				return fmt.Errorf("refusing to create: capability %q is not in the dind-runner allowed set", cap)
 			}
 		}
 	}
@@ -185,19 +185,19 @@ func validateManagedSpec(spec ManagedSpec) error {
 		if len(hostCfg.Mounts) > 0 {
 			return fmt.Errorf("refusing to create: standard profile must not have mounts")
 		}
-	case config.ProfileNestedDocker:
-		// Fixed nested-docker tmpfs: /var/lib/docker, mode 0700, positive size.
+	case config.ProfileDindRunner:
+		// Fixed dind-runner tmpfs: /var/lib/docker, mode 0700, positive size.
 		if len(hostCfg.Mounts) != 1 ||
 			hostCfg.Mounts[0].Type != mount.TypeTmpfs ||
-			hostCfg.Mounts[0].Target != nestedDockerDataDir {
-			return fmt.Errorf("refusing to create: nested-docker profile requires exactly one tmpfs mount at %s", nestedDockerDataDir)
+			hostCfg.Mounts[0].Target != dindRunnerDataDir {
+			return fmt.Errorf("refusing to create: dind-runner profile requires exactly one tmpfs mount at %s", dindRunnerDataDir)
 		}
 		opt := hostCfg.Mounts[0].TmpfsOptions
 		if opt == nil || opt.SizeBytes <= 0 {
-			return fmt.Errorf("refusing to create: nested-docker tmpfs %s must have a positive size", nestedDockerDataDir)
+			return fmt.Errorf("refusing to create: dind-runner tmpfs %s must have a positive size", dindRunnerDataDir)
 		}
 		if opt.Mode != 0o700 {
-			return fmt.Errorf("refusing to create: nested-docker tmpfs %s mode must be 0700", nestedDockerDataDir)
+			return fmt.Errorf("refusing to create: dind-runner tmpfs %s mode must be 0700", dindRunnerDataDir)
 		}
 	}
 

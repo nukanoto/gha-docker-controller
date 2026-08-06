@@ -28,26 +28,26 @@ func validateSpecInputSecurity(cfg *config.Config) error {
 		if len(cfg.Runner.CapAdd) > 0 {
 			return fmt.Errorf("runner.capAdd must be empty for standard profile")
 		}
-	case config.ProfileNestedDocker:
-		allowed := config.NestedCapabilities()
+	case config.ProfileDindRunner:
+		allowed := config.DindCapabilities()
 		for _, cap := range cfg.Runner.CapAdd {
 			if !slices.Contains(allowed, cap) {
-				return fmt.Errorf("runner.capAdd %q is not in the nested-docker allowed set", cap)
+				return fmt.Errorf("runner.capAdd %q is not in the dind-runner allowed set", cap)
 			}
 		}
 	}
 
-	// The builder manages /var/lib/docker for nested-docker as a fixed
+	// The builder manages /var/lib/docker for dind-runner as a fixed
 	// tmpfs, so also declaring it in runner.tmpfs could conflict on the
 	// daemon side. Misconfiguration is rejected statically.
-	if cfg.Runner.Profile == config.ProfileNestedDocker {
+	if cfg.Runner.Profile == config.ProfileDindRunner {
 		for _, spec := range cfg.Runner.Tmpfs {
 			dest, _, err := parseTmpfsSpec(spec)
 			if err != nil {
 				return err
 			}
-			if dest == nestedDockerDataDir {
-				return fmt.Errorf("runner.tmpfs destination %q is reserved for the nested-docker profile", dest)
+			if dest == dindRunnerDataDir {
+				return fmt.Errorf("runner.tmpfs destination %q is reserved for the dind-runner profile", dest)
 			}
 		}
 	}

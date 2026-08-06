@@ -3,14 +3,14 @@
 // standard_integration_helpers_test.go defines the common helpers of the
 // standard integration tests. The unmanaged sentinel
 // (createUnmanagedSentinel and verifyAndRemoveUnmanagedSentinel) is shared
-// with the nested integration test. The sentinel approach does not compare
+// with the dind integration test. The sentinel approach does not compare
 // whole-daemon snapshots; it verifies the ID/state/label invariants of the
 // single unique sentinel the test creates (no contention with fixtures of
 // parallel packages). cleanupManagedFixture follows the test fixture
 // cleanup principle (via the fresh managed guard); only in the abnormal
 // case does it fall back to the forceRemoveTestContainer official SDK
 // forced removal (forceRemoveTestContainer is defined in
-// nested_integration_test.go).
+// dind_integration_test.go).
 package docker
 
 import (

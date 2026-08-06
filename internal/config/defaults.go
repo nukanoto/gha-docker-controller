@@ -43,18 +43,18 @@ const (
 	DefaultShutdownGrace = 2 * time.Minute
 )
 
-// DefaultNestedStorage is the default storage kind for /var/lib/docker.
+// DefaultDindStorage is the default storage kind for /var/lib/docker.
 // Only tmpfs is allowed and the default is tmpfs as well.
-const DefaultNestedStorage = "tmpfs"
+const DefaultDindStorage = "tmpfs"
 
-// DefaultNestedStorageSize is the default tmpfs size of 2 GiB for /var/lib/docker.
-const DefaultNestedStorageSize = Memory(2 * 1024 * 1024 * 1024)
+// DefaultDindStorageSize is the default tmpfs size of 2 GiB for /var/lib/docker.
+const DefaultDindStorageSize = Memory(2 * 1024 * 1024 * 1024)
 
-// nestedCapAdd is the complete set of capabilities allowed for the
-// nested-docker profile. Only the 17 capabilities needed to run the inner
+// dindCapAdd is the complete set of capabilities allowed for the
+// dind-runner profile. Only the 17 capabilities needed to run the inner
 // dockerd inside runsc are allowed; nothing else can be added. It is kept
-// unexported and immutable, and NestedCapabilities returns a defensive copy.
-var nestedCapAdd = []string{
+// unexported and immutable, and DindCapabilities returns a defensive copy.
+var dindCapAdd = []string{
 	"AUDIT_WRITE",
 	"CHOWN",
 	"DAC_OVERRIDE",
@@ -74,9 +74,9 @@ var nestedCapAdd = []string{
 	"SYS_PTRACE",
 }
 
-// NestedCapabilities returns a defensive copy of the capabilities allowed for
-// the nested-docker profile. Mutating the returned slice does not affect the
+// DindCapabilities returns a defensive copy of the capabilities allowed for
+// the dind-runner profile. Mutating the returned slice does not affect the
 // fixed set inside the package or future results.
-func NestedCapabilities() []string {
-	return slices.Clone(nestedCapAdd)
+func DindCapabilities() []string {
+	return slices.Clone(dindCapAdd)
 }

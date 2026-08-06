@@ -10,7 +10,7 @@ import (
 // This file verifies Config.validate with value inputs. Covered: scope,
 // min/max, enum values, non-positive resources, incomplete App, security
 // (capability, read-only rootfs, no-new-privileges, unconfined),
-// nestedDocker storage and network. Validation through YAML parsing is
+// dindRunner storage and network. Validation through YAML parsing is
 // covered by load_test.go and schema_test.go; the format pure function
 // details are covered by parse_format_test.go.
 
@@ -34,7 +34,7 @@ func validConfig() *Config {
 		},
 		Runner: RunnerConfig{
 			// A digest reference is used so profile-change tests to
-			// nested-docker also pass.
+			// dind-runner also pass.
 			Image:               "ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda",
 			Profile:             ProfileStandard,
 			CPU:                 NanoCPUs(2000000000),
@@ -47,10 +47,10 @@ func validConfig() *Config {
 			Network:             "bridge",
 			NoNewPrivileges:     true,
 		},
-		NestedDocker: NestedDockerConfig{Storage: DefaultNestedStorage, StorageSize: DefaultNestedStorageSize},
-		Health:       HealthConfig{Listen: "127.0.0.1:8080"},
-		Shutdown:     ShutdownConfig{BusyPolicy: ShutdownPolicyLeave, Grace: Duration(DefaultShutdownGrace)},
-		Log:          LogConfig{Format: LogFormatJSON, Level: LogLevelInfo},
+		DindRunner: DindRunnerConfig{Storage: DefaultDindStorage, StorageSize: DefaultDindStorageSize},
+		Health:     HealthConfig{Listen: "127.0.0.1:8080"},
+		Shutdown:   ShutdownConfig{BusyPolicy: ShutdownPolicyLeave, Grace: Duration(DefaultShutdownGrace)},
+		Log:        LogConfig{Format: LogFormatJSON, Level: LogLevelInfo},
 	}
 }
 
@@ -176,7 +176,8 @@ func TestValidate_EnumValues(t *testing.T) {
 	}{
 		{name: "unknown pull policy", mutate: func(c *Config) { c.Docker.PullPolicy = "sometimes" }, wantErr: "docker.pullPolicy: must be one of always, if-not-present, never"},
 		{name: "empty pull policy", mutate: func(c *Config) { c.Docker.PullPolicy = "" }, wantErr: "docker.pullPolicy"},
-		{name: "unknown profile", mutate: func(c *Config) { c.Runner.Profile = "custom" }, wantErr: "runner.profile: must be one of standard, nested-docker"},
+		{name: "unknown profile", mutate: func(c *Config) { c.Runner.Profile = "custom" }, wantErr: "runner.profile: must be one of standard, dind-runner"},
+		{name: "old nested profile is rejected", mutate: func(c *Config) { c.Runner.Profile = "nested-docker" }, wantErr: "runner.profile: must be one of standard, dind-runner"},
 		{name: "unknown busy policy", mutate: func(c *Config) { c.Shutdown.BusyPolicy = "kill" }, wantErr: "shutdown.busyRunnerPolicy"},
 		{name: "unknown log format", mutate: func(c *Config) { c.Log.Format = "yaml" }, wantErr: "log.format"},
 		{name: "unknown log level", mutate: func(c *Config) { c.Log.Level = "verbose" }, wantErr: "log.level"},
@@ -224,7 +225,7 @@ func TestValidate_SecurityBasics(t *testing.T) {
 		{name: "extra capability drop is rejected", mutate: func(c *Config) { c.Runner.CapDrop = []string{"ALL", "CHOWN"} }, wantErr: "runner.capDrop"},
 		{name: "empty capDrop is rejected", mutate: func(c *Config) { c.Runner.CapDrop = []string{} }, wantErr: "runner.capDrop"},
 		{name: "standard capAdd is rejected", mutate: func(c *Config) { c.Runner.CapAdd = []string{"CHOWN"} }, wantErr: "runner.capAdd: must be empty for standard profile"},
-		{name: "standard full nested capAdd is rejected", mutate: func(c *Config) { c.Runner.CapAdd = NestedCapabilities() }, wantErr: "runner.capAdd: must be empty for standard profile"},
+		{name: "standard full dind capAdd is rejected", mutate: func(c *Config) { c.Runner.CapAdd = DindCapabilities() }, wantErr: "runner.capAdd: must be empty for standard profile"},
 		{name: "seccomp unconfined is rejected", mutate: func(c *Config) { c.Runner.Seccomp = "unconfined" }, wantErr: "runner.seccomp: \"unconfined\" is not allowed"},
 		{name: "apparmor unconfined is rejected", mutate: func(c *Config) { c.Runner.AppArmor = "unconfined" }, wantErr: "runner.apparmor: \"unconfined\" is not allowed"},
 	}
@@ -235,40 +236,40 @@ func TestValidate_SecurityBasics(t *testing.T) {
 	}
 }
 
-// TestValidate_NestedCapAddExactSet verifies that nested CapAdd allows only
+// TestValidate_DindCapAddExactSet verifies that dind CapAdd allows only
 // subsets of the 17-capability allowed set, rejects anything outside, and
 // that mutating the returned slice does not affect the fixed set.
-func TestValidate_NestedCapAddExactSet(t *testing.T) {
+func TestValidate_DindCapAddExactSet(t *testing.T) {
 	// Fix the allowed set size at 17 with no duplicates.
-	nested := NestedCapabilities()
-	if len(nested) != 17 {
-		t.Fatalf("NestedCapabilities の個数が不正です: 期待値 %d、実測値 %d", 17, len(nested))
+	dind := DindCapabilities()
+	if len(dind) != 17 {
+		t.Fatalf("DindCapabilities の個数が不正です: 期待値 %d、実測値 %d", 17, len(dind))
 	}
-	seen := make(map[string]bool, len(nested))
-	for _, cap := range nested {
+	seen := make(map[string]bool, len(dind))
+	for _, cap := range dind {
 		if seen[cap] {
-			t.Fatalf("NestedCapabilities に重複があります: %q", cap)
+			t.Fatalf("DindCapabilities に重複があります: %q", cap)
 		}
 		seen[cap] = true
 	}
 
 	// Mutating the returned slice does not change the fixed set (defensive
 	// copy).
-	nested[0] = "CORRUPTED"
-	if got := NestedCapabilities()[0]; got != "AUDIT_WRITE" {
-		t.Fatalf("NestedCapabilities の固定集合が変更されました: %q", got)
+	dind[0] = "CORRUPTED"
+	if got := DindCapabilities()[0]; got != "AUDIT_WRITE" {
+		t.Fatalf("DindCapabilities の固定集合が変更されました: %q", got)
 	}
 
 	// Each single-element subset and the full set are accepted.
-	for _, cap := range NestedCapabilities() {
+	for _, cap := range DindCapabilities() {
 		runValidate(t, "allowed_"+cap, func(c *Config) {
-			c.Runner.Profile = ProfileNestedDocker
+			c.Runner.Profile = ProfileDindRunner
 			c.Runner.CapAdd = []string{cap}
 		}, "")
 	}
-	runValidate(t, "full nested set is allowed", func(c *Config) {
-		c.Runner.Profile = ProfileNestedDocker
-		c.Runner.CapAdd = NestedCapabilities()
+	runValidate(t, "full dind set is allowed", func(c *Config) {
+		c.Runner.Profile = ProfileDindRunner
+		c.Runner.CapAdd = DindCapabilities()
 	}, "")
 
 	// Capabilities outside the set are rejected.
@@ -283,14 +284,14 @@ func TestValidate_NestedCapAddExactSet(t *testing.T) {
 	}
 	for _, tt := range tests {
 		runValidate(t, tt.name, func(c *Config) {
-			c.Runner.Profile = ProfileNestedDocker
+			c.Runner.Profile = ProfileDindRunner
 			c.Runner.CapAdd = []string{tt.cap}
-		}, "runner.capAdd: \""+tt.cap+"\" is not in the nested-docker allowed set")
+		}, "runner.capAdd: \""+tt.cap+"\" is not in the dind-runner allowed set")
 	}
 }
 
 // TestValidate_RuntimeProfileCombination verifies that standard allows any
-// registered runtime while nested-docker is fixed to runsc, rejected with an
+// registered runtime whiledind-runner is fixed to runsc, rejected with an
 // error on the docker.runtime path.
 func TestValidate_RuntimeProfileCombination(t *testing.T) {
 	tests := []struct {
@@ -302,9 +303,9 @@ func TestValidate_RuntimeProfileCombination(t *testing.T) {
 		{name: "standard with runsc is allowed", profile: ProfileStandard, runtime: "runsc"},
 		{name: "standard with runc is allowed", profile: ProfileStandard, runtime: "runc"},
 		{name: "standard with custom runtime is allowed", profile: ProfileStandard, runtime: "kata-runtime"},
-		{name: "nested with runsc is allowed", profile: ProfileNestedDocker, runtime: "runsc"},
-		{name: "nested with runc is rejected", profile: ProfileNestedDocker, runtime: "runc", wantErr: "docker.runtime: nested-docker profile requires"},
-		{name: "nested with empty runtime is rejected", profile: ProfileNestedDocker, runtime: "", wantErr: "docker.runtime"},
+		{name: "dind with runsc is allowed", profile: ProfileDindRunner, runtime: "runsc"},
+		{name: "dind with runc is rejected", profile: ProfileDindRunner, runtime: "runc", wantErr: "docker.runtime: dind-runner profile requires"},
+		{name: "dind with empty runtime is rejected", profile: ProfileDindRunner, runtime: "", wantErr: "docker.runtime"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -344,26 +345,26 @@ func TestValidate_NetworkRules(t *testing.T) {
 	}
 }
 
-// TestValidate_NestedDockerStorage verifies positive storageSize and the
+// TestValidate_DindRunnerStorage verifies positive storageSize and the
 // tmpfs-only storage. The host daemon runsc runtimeArgs are out of scope for
 // config; they are left to the check warning and a manual operator check.
-func TestValidate_NestedDockerStorage(t *testing.T) {
+func TestValidate_DindRunnerStorage(t *testing.T) {
 	tests := []struct {
 		name    string
 		storage Memory
 		kind    string
 		wantErr string
 	}{
-		{name: "default storage size is allowed", storage: DefaultNestedStorageSize},
-		{name: "zero storage size is rejected", storage: 0, wantErr: "nestedDocker.storageSize: must be positive"},
-		{name: "non tmpfs storage is rejected", storage: DefaultNestedStorageSize, kind: "volume", wantErr: "nestedDocker.storage: only \"tmpfs\" is supported"},
+		{name: "default storage size is allowed", storage: DefaultDindStorageSize},
+		{name: "zero storage size is rejected", storage: 0, wantErr: "dindRunner.storageSize: must be positive"},
+		{name: "non tmpfs storage is rejected", storage: DefaultDindStorageSize, kind: "volume", wantErr: "dindRunner.storage: only \"tmpfs\" is supported"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runValidate(t, tt.name, func(c *Config) {
-				c.NestedDocker.StorageSize = tt.storage
+				c.DindRunner.StorageSize = tt.storage
 				if tt.kind != "" {
-					c.NestedDocker.Storage = tt.kind
+					c.DindRunner.Storage = tt.kind
 				}
 			}, tt.wantErr)
 		})

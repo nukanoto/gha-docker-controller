@@ -284,8 +284,8 @@ func scalerTestConfig(runtime, imageRef string) *config.Config {
 			NoNewPrivileges:     true,
 			Network:             "bridge",
 		},
-		NestedDocker: config.NestedDockerConfig{StorageSize: config.DefaultNestedStorageSize},
-		Shutdown:     config.ShutdownConfig{BusyPolicy: config.ShutdownPolicyLeave},
+		DindRunner: config.DindRunnerConfig{StorageSize: config.DefaultDindStorageSize},
+		Shutdown:   config.ShutdownConfig{BusyPolicy: config.ShutdownPolicyLeave},
 	}
 }
 

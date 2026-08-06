@@ -21,12 +21,12 @@ import (
 
 // TestValidateManagedSpec_ValidSpecs verifies that builder output always
 // passes its own re-validation. The three configurations standard/runsc,
-// standard/runc and nested/runsc are checked.
+// standard/runc and dind/runsc are checked.
 func TestValidateManagedSpec_ValidSpecs(t *testing.T) {
 	cases := []struct{ profile, runtime string }{
 		{config.ProfileStandard, "runsc"},
 		{config.ProfileStandard, "runc"},
-		{config.ProfileNestedDocker, "runsc"},
+		{config.ProfileDindRunner, "runsc"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.profile+"-"+tc.runtime, func(t *testing.T) {
@@ -86,7 +86,7 @@ func TestCreateManaged_RejectsTamperedSpec(t *testing.T) {
 		{name: "standard の mount", tamper: func(s *ManagedSpec) {
 			s.create.HostConfig.Mounts = []mount.Mount{{Type: mount.TypeTmpfs, Target: "/tmp/x"}}
 		}, wantErr: "standard profile must not have mounts"},
-		{name: "nested runtime 不一致", profile: config.ProfileNestedDocker, tamper: func(s *ManagedSpec) { s.runtime = "runc" }, wantErr: "nested-docker profile requires runtime"},
+		{name: "dind runtime 不一致", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.runtime = "runc" }, wantErr: "dind-runner profile requires runtime"},
 		{name: "standard runtime 不正", tamper: func(s *ManagedSpec) { s.runtime = "run sc" }, wantErr: "requires a valid runtime name"},
 		{name: "unknown profile", tamper: func(s *ManagedSpec) { s.profile = "evil" }, wantErr: "unknown profile"},
 		{name: "NanoCPUs 欠落", tamper: func(s *ManagedSpec) { s.create.HostConfig.Resources.NanoCPUs = 0 }, wantErr: "NanoCPUs must be positive"},
@@ -97,7 +97,7 @@ func TestCreateManaged_RejectsTamperedSpec(t *testing.T) {
 		}, wantErr: "memory swap must be >= memory"},
 		{name: "CapDrop 変更", tamper: func(s *ManagedSpec) { s.create.HostConfig.CapDrop = []string{"SYS_ADMIN"} }, wantErr: "cap drop must be exactly"},
 		{name: "standard の CapAdd", tamper: func(s *ManagedSpec) { s.create.HostConfig.CapAdd = []string{"CHOWN"} }, wantErr: "must not add capabilities"},
-		{name: "nested の 17 個外 CapAdd", profile: config.ProfileNestedDocker, tamper: func(s *ManagedSpec) { s.create.HostConfig.CapAdd = append(s.create.HostConfig.CapAdd, "SYS_TIME") }, wantErr: "not in the nested-docker allowed set"},
+		{name: "dind の 17 個外 CapAdd", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.create.HostConfig.CapAdd = append(s.create.HostConfig.CapAdd, "SYS_TIME") }, wantErr: "not in the dind-runner allowed set"},
 		{name: "JIT env 欠落", tamper: func(s *ManagedSpec) { s.create.Config.Env = nil }, wantErr: "JIT env contract"},
 		{name: "JIT env 空値", tamper: func(s *ManagedSpec) { s.create.Config.Env[0] = "ACTIONS_RUNNER_INPUT_JITCONFIG=" }, wantErr: "JIT config env value must not be empty"},
 		{name: "no-new-privileges 欠落", tamper: func(s *ManagedSpec) { s.create.HostConfig.SecurityOpt = nil }, wantErr: "no-new-privileges security option is required"},
@@ -108,9 +108,9 @@ func TestCreateManaged_RejectsTamperedSpec(t *testing.T) {
 			s.create.HostConfig.SecurityOpt = []string{"no-new-privileges", "apparmor=unconfined"}
 		}, wantErr: "unconfined security option"},
 		{name: "standard user 変更", tamper: func(s *ManagedSpec) { s.create.Config.User = "root" }, wantErr: "standard profile user must be"},
-		{name: "nested user 変更", profile: config.ProfileNestedDocker, tamper: func(s *ManagedSpec) { s.create.Config.User = "runner" }, wantErr: "nested-docker profile user must be"},
+		{name: "dind user 変更", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.create.Config.User = "runner" }, wantErr: "dind-runner profile user must be"},
 		{name: "standard entrypoint 追加", tamper: func(s *ManagedSpec) { s.create.Config.Entrypoint = []string{"/bin/sh"} }, wantErr: "must not have an entrypoint"},
-		{name: "nested entrypoint 変更", profile: config.ProfileNestedDocker, tamper: func(s *ManagedSpec) { s.create.Config.Entrypoint = []string{"/bin/sh"} }, wantErr: "entrypoint must be"},
+		{name: "dind entrypoint 変更", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.create.Config.Entrypoint = []string{"/bin/sh"} }, wantErr: "entrypoint must be"},
 		{name: "command 変更", tamper: func(s *ManagedSpec) { s.create.Config.Cmd = []string{"/bin/sh"} }, wantErr: "command must be"},
 		{name: "working dir 変更", tamper: func(s *ManagedSpec) { s.create.Config.WorkingDir = "/" }, wantErr: "runner contract"},
 		{name: "stop signal 変更", tamper: func(s *ManagedSpec) { s.create.Config.StopSignal = "SIGKILL" }, wantErr: "stop signal must be SIGTERM"},
@@ -125,9 +125,9 @@ func TestCreateManaged_RejectsTamperedSpec(t *testing.T) {
 		{name: "create label nil", tamper: func(s *ManagedSpec) { s.create.Config.Labels = nil }, wantErr: "labels are missing"},
 		{name: "create label managed 改変", tamper: func(s *ManagedSpec) { s.create.Config.Labels[model.ManagedLabelKey] = "false" }, wantErr: "managed label is invalid"},
 		{name: "create label runner-id 改変", tamper: func(s *ManagedSpec) { s.create.Config.Labels[model.RunnerIDLabelKey] = "1" }, wantErr: "runner-id label is invalid"},
-		{name: "nested tmpfs 欠落", profile: config.ProfileNestedDocker, tamper: func(s *ManagedSpec) { s.create.HostConfig.Mounts = nil }, wantErr: "requires exactly one tmpfs mount"},
-		{name: "nested tmpfs size 0", profile: config.ProfileNestedDocker, tamper: func(s *ManagedSpec) { s.create.HostConfig.Mounts[0].TmpfsOptions.SizeBytes = 0 }, wantErr: "positive size"},
-		{name: "nested tmpfs mode 変更", profile: config.ProfileNestedDocker, tamper: func(s *ManagedSpec) { s.create.HostConfig.Mounts[0].TmpfsOptions.Mode = 0o755 }, wantErr: "mode must be 0700"},
+		{name: "dind tmpfs 欠落", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.create.HostConfig.Mounts = nil }, wantErr: "requires exactly one tmpfs mount"},
+		{name: "dind tmpfs size 0", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.create.HostConfig.Mounts[0].TmpfsOptions.SizeBytes = 0 }, wantErr: "positive size"},
+		{name: "dind tmpfs mode 変更", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.create.HostConfig.Mounts[0].TmpfsOptions.Mode = 0o755 }, wantErr: "mode must be 0700"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

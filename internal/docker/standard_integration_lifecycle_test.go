@@ -13,7 +13,7 @@
 // inspect and managed label re-match); only in the abnormal case does it
 // exact-check the test labels with a fresh inspect and force-remove with
 // the official Moby SDK ContainerRemove (forceRemoveTestContainer, shared
-// with the nested integration helpers). After the test, ListManaged verifies
+// with the dind integration helpers). After the test, ListManaged verifies
 // that no managed container remains, and the ID/state/label invariants of
 // the unmanaged sentinel container are checked at cleanup.
 //

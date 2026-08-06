@@ -324,7 +324,7 @@ func TestValidateNetwork_HostNoneAndContainerRejected(t *testing.T) {
 }
 
 // TestValidateImage_LatestTaglessAndDigest verifies that latest and
-// tagless/digestless references are rejected and nested-docker allows only
+// tagless/digestless references are rejected and dind-runner allows only
 // digest references. latest is explicitly rejected both as a tag and with a
 // digest.
 func TestValidateImage_LatestTaglessAndDigest(t *testing.T) {
@@ -337,7 +337,7 @@ func TestValidateImage_LatestTaglessAndDigest(t *testing.T) {
 		{name: "version tag is allowed", image: "ghcr.io/actions/actions-runner:2.336.0", profile: ProfileStandard},
 		{name: "sha256 digest is allowed", image: "ghcr.io/actions/actions-runner@" + sha256Digest, profile: ProfileStandard},
 		{name: "sha512 digest is allowed", image: "ghcr.io/actions/actions-runner@sha512:" + strings.Repeat("a", 128), profile: ProfileStandard},
-		{name: "nested digest is allowed", image: "ghcr.io/actions/actions-runner@" + sha256Digest, profile: ProfileNestedDocker},
+		{name: "dind digest is allowed", image: "ghcr.io/actions/actions-runner@" + sha256Digest, profile: ProfileDindRunner},
 		{name: "latest tag is rejected", image: "ghcr.io/actions/actions-runner:latest", wantErr: "not allowed"},
 		{name: "latest with digest is rejected", image: "ghcr.io/actions/actions-runner:latest@" + sha256Digest, wantErr: "not allowed"},
 		{name: "bare latest with digest is rejected", image: "latest@" + sha256Digest, wantErr: "not allowed"},
@@ -345,7 +345,7 @@ func TestValidateImage_LatestTaglessAndDigest(t *testing.T) {
 		{name: "empty tag is rejected", image: "ghcr.io/actions/actions-runner:", wantErr: "invalid image name"},
 		{name: "invalid tag is rejected", image: "ghcr.io/actions/actions-runner:2.336.0!", wantErr: "invalid image name"},
 		{name: "empty image is rejected", image: "", wantErr: "required"},
-		{name: "nested requires digest", image: "ghcr.io/actions/actions-runner:2.336.0", profile: ProfileNestedDocker, wantErr: "requires a digest reference"},
+		{name: "dind requires digest", image: "ghcr.io/actions/actions-runner:2.336.0", profile: ProfileDindRunner, wantErr: "requires a digest reference"},
 		{name: "malformed digest is rejected", image: "ghcr.io/actions/actions-runner@sha256:short", wantErr: "invalid digest"},
 		{name: "unknown digest algorithm is rejected", image: "ghcr.io/actions/actions-runner@md5:abc", wantErr: "invalid digest"},
 		{name: "uppercase repository is rejected", image: "GHCR.IO/actions/actions-runner:2.336.0", wantErr: "invalid image name"},

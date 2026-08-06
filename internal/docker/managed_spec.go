@@ -43,19 +43,19 @@ const (
 	runnerCommand = "/home/runner/run.sh"
 )
 
-// Fixed values for the nested-docker profile.
+// Fixed values for the dind-runner profile.
 const (
-	// nestedUser is the user the outer container runs as. The entrypoint
+	// dindUser is the user the outer container runs as. The entrypoint
 	// starts dockerd as root and then drops privileges to runner with
 	// setpriv.
-	nestedUser = "0:0"
-	// nestedEntrypoint is the supervisor of the project nested image.
-	nestedEntrypoint = "/usr/local/bin/gha-nested-entrypoint"
-	// nestedDockerDataDir is the inner dockerd data directory, mounted as a
+	dindUser = "0:0"
+	// dindEntrypoint is the supervisor of the project dind image.
+	dindEntrypoint = "/usr/local/bin/gha-dind-entrypoint"
+	// dindRunnerDataDir is the inner dockerd data directory, mounted as a
 	// tmpfs that is never reused between runners.
-	nestedDockerDataDir = "/var/lib/docker"
-	// nestedRuntime is the literal runtime name fixed for nested-docker.
-	nestedRuntime = "runsc"
+	dindRunnerDataDir = "/var/lib/docker"
+	// dindRuntime is the literal runtime name fixed for dind-runner.
+	dindRuntime = "runsc"
 )
 
 // JIT env contract. The official runner requires exactly these three env
@@ -69,29 +69,29 @@ const (
 
 // managedProfile carries only the create fields that differ per profile
 // between the builders. The common security fields are assembled in one
-// place by BuildManagedSpec, so standard and nested-docker do not duplicate
+// place by BuildManagedSpec, so standard and dind-runner do not duplicate
 // them.
 type managedProfile struct {
 	user       string
 	entrypoint []string
 	runtime    string
 	mounts     []mount.Mount
-	// env is the profile-specific extra env. Only nested-docker sets the
+	// env is the profile-specific extra env. Only dind-runner sets the
 	// timeout seconds for the entrypoint; standard keeps it nil.
 	env []string
 }
 
 // buildProfile selects the fixed builder for the given profile.
 func buildProfile(cfg *config.Config) managedProfile {
-	if cfg.Runner.Profile == config.ProfileNestedDocker {
-		return buildNestedProfile(cfg)
+	if cfg.Runner.Profile == config.ProfileDindRunner {
+		return buildDindProfile(cfg)
 	}
 	return buildStandardProfile(cfg)
 }
 
 // buildStandardProfile builds the standard-profile delta fields. standard
 // sets the configured docker.runtime value into HostConfig.Runtime;
-// nested-docker sets the literal "runsc".
+// dind-runner sets the literal "runsc".
 func buildStandardProfile(cfg *config.Config) managedProfile {
 	return managedProfile{
 		user:    standardUser,
@@ -99,22 +99,22 @@ func buildStandardProfile(cfg *config.Config) managedProfile {
 	}
 }
 
-// buildNestedProfile builds the nested-docker profile delta fields. The
+// buildDindProfile builds the dind-runner profile delta fields. The
 // runtime is fixed to the literal runsc, and the inner dockerd data
 // directory is mounted as a tmpfs (mode 0700, storageSize). Volumes and
 // state are never reused. The container env gets the provisioning/stop
 // timeouts read by the entrypoint as the ceiling seconds of the positive
 // config durations (not set for standard).
-func buildNestedProfile(cfg *config.Config) managedProfile {
+func buildDindProfile(cfg *config.Config) managedProfile {
 	return managedProfile{
-		user:       nestedUser,
-		entrypoint: []string{nestedEntrypoint},
-		runtime:    nestedRuntime,
+		user:       dindUser,
+		entrypoint: []string{dindEntrypoint},
+		runtime:    dindRuntime,
 		mounts: []mount.Mount{{
 			Type:   mount.TypeTmpfs,
-			Target: nestedDockerDataDir,
+			Target: dindRunnerDataDir,
 			TmpfsOptions: &mount.TmpfsOptions{
-				SizeBytes: int64(cfg.NestedDocker.StorageSize),
+				SizeBytes: int64(cfg.DindRunner.StorageSize),
 				Mode:      0o700,
 			},
 		}},
@@ -175,9 +175,9 @@ type ManagedSpecInput struct {
 }
 
 // BuildManagedSpec deterministically assembles the container.Config and
-// HostConfig for standard / nested-docker and returns an immutable
+// HostConfig for standard /dind-runner and returns an immutable
 // ManagedSpec. standard sets the configured docker.runtime value into
-// HostConfig.Runtime; nested-docker sets the literal "runsc". When seccomp
+// HostConfig.Runtime; dind-runner sets the literal "runsc". When seccomp
 // is configured, the JSON file is read, compacted and passed as
 // "seccomp=<compact JSON>" in SecurityOpt. No input map or slice is shared;
 // everything is defensive-copied into the spec.
@@ -195,7 +195,7 @@ func BuildManagedSpec(input ManagedSpecInput) (ManagedSpec, error) {
 	profile := buildProfile(cfg)
 
 	// The three JIT env values. The JIT config value is a secret, so it
-	// never goes into errors or logs. nested-docker appends the
+	// never goes into errors or logs. dind-runner appends the
 	// entrypoint timeout env added by the profile at the end.
 	env := []string{
 		jitEnvKey + "=" + input.JITConfig,

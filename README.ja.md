@@ -115,7 +115,7 @@ github:
 - `memorySwap` は `memory` 以上にします
 - `runner.image` に `latest` は使用できません
 - `standard` profile は version tag または digest が必要です
-- `nested-docker` profile は digest が必要です
+- `dind-runner` profile は digest が必要です
 
 resource、DNS、extra hosts、tmpfs、ulimit、seccomp、AppArmor の設定例は `config.example.yaml` にあります。
 
@@ -149,9 +149,9 @@ jobs:
           echo "runner is ready"
 ```
 
-### `nested-docker` profile
+### `dind-runner` profile
 
-`nested-docker` は runner 内で独立した Docker daemon を起動します。
+`dind-runner` は runner 内で独立した Docker daemon を起動します。
 
 host の `/etc/docker/daemon.json` に以下のように設定します。
 
@@ -173,7 +173,7 @@ host の `/etc/docker/daemon.json` に以下のように設定します。
 
 ```yaml
 scaleSet:
-  name: production-nested
+  name: production-dind
   runnerGroup: default
   minRunners: 0
   maxRunners: 2
@@ -185,15 +185,15 @@ docker:
   pullPolicy: always
 
 runner:
-  image: ghcr.io/example/gha-nested-runner@sha256:<digest>
-  profile: nested-docker
+  image: ghcr.io/example/gha-dind-runner@sha256:<digest>
+  profile: dind-runner
   cpu: "4"
   memory: 8GiB
   memorySwap: 8GiB
   pidsLimit: 1024
   capDrop: ["ALL"]
 
-nestedDocker:
+dindRunner:
   storage: tmpfs
   storageSize: 16GiB
 ```

@@ -55,11 +55,11 @@ func (c *Config) validate() []error {
 	if !validName(c.Docker.Runtime) {
 		add("docker.runtime: required, allowed characters are [A-Za-z0-9_.-]")
 	}
-	// standard allows the configured runtime as-is, but nested-docker is
-	// fixed to runsc. The nested contract does not hold with any runtime
+	// standard allows the configured runtime as-is, but dind-runner is
+	// fixed to runsc. The dind contract does not hold with any runtime
 	// other than runsc sandboxing the inner dockerd.
-	if c.Runner.Profile == ProfileNestedDocker && c.Docker.Runtime != DefaultRuntime {
-		add("docker.runtime: nested-docker profile requires runtime %q", DefaultRuntime)
+	if c.Runner.Profile == ProfileDindRunner && c.Docker.Runtime != DefaultRuntime {
+		add("docker.runtime: dind-runner profile requires runtime %q", DefaultRuntime)
 	}
 	if err := validateNetwork(c.Docker.Network); err != nil {
 		add("docker.network: %v", err)
@@ -115,8 +115,8 @@ func (c *Config) validate() []error {
 		}
 	}
 
-	// NestedDocker
-	errs = append(errs, validateNestedDocker(c)...)
+	// DindRunner
+	errs = append(errs, validateDindRunner(c)...)
 
 	// Health / Shutdown / Log
 	if err := validateListen(c.Health.Listen); err != nil {
@@ -189,8 +189,8 @@ func validateGitHub(c *Config) []error {
 
 // validateRunnerProfile validates the combination of runner image and
 // profile. The image reference form follows validateImage rules (digest or
-// version tag; digest only for nested-docker), and the profile must be one of
-// standard and nested-docker.
+// version tag; digest only for dind-runner), and the profile must be one of
+// standard and dind-runner.
 func validateRunnerProfile(c *Config) []error {
 	var errs []error
 	// Runner image
@@ -198,9 +198,9 @@ func validateRunnerProfile(c *Config) []error {
 		errs = append(errs, fmt.Errorf("runner.image: %v", err))
 	}
 	switch c.Runner.Profile {
-	case ProfileStandard, ProfileNestedDocker:
+	case ProfileStandard, ProfileDindRunner:
 	default:
-		errs = append(errs, fmt.Errorf("runner.profile: must be one of standard, nested-docker"))
+		errs = append(errs, fmt.Errorf("runner.profile: must be one of standard, dind-runner"))
 	}
 	return errs
 }
@@ -228,8 +228,8 @@ func validateRunnerSecurity(c *Config) []error {
 }
 
 // validateRunnerCapabilities validates the CapAdd constraints per profile.
-// standard allows no additional capabilities at all; nested-docker allows
-// only a subset of the 17 nestedCapAdd capabilities.
+// standard allows no additional capabilities at all; dind-runner allows
+// only a subset of the 17 dindCapAdd capabilities.
 func validateRunnerCapabilities(c *Config) []error {
 	var errs []error
 	// Apply the per-profile CapAdd constraints.
@@ -238,10 +238,10 @@ func validateRunnerCapabilities(c *Config) []error {
 		if len(c.Runner.CapAdd) > 0 {
 			errs = append(errs, fmt.Errorf("runner.capAdd: must be empty for standard profile"))
 		}
-	case ProfileNestedDocker:
+	case ProfileDindRunner:
 		for _, cap := range c.Runner.CapAdd {
-			if !slices.Contains(nestedCapAdd, cap) {
-				errs = append(errs, fmt.Errorf("runner.capAdd: %q is not in the nested-docker allowed set", cap))
+			if !slices.Contains(dindCapAdd, cap) {
+				errs = append(errs, fmt.Errorf("runner.capAdd: %q is not in the dind-runner allowed set", cap))
 			}
 		}
 	}
@@ -263,19 +263,19 @@ func validateRunnerIsolation(c *Config) []error {
 	return errs
 }
 
-// validateNestedDocker validates the nested-docker profile storage. The inner
+// validateDindRunner validates the dind-runner profile storage. The inner
 // dockerd storage is fixed to tmpfs. The host daemon runsc runtimeArgs cannot
 // be verified through the Docker API, so that is left to the check warning
 // and a manual operator check (see the README procedure).
-func validateNestedDocker(c *Config) []error {
+func validateDindRunner(c *Config) []error {
 	var errs []error
 	// Only tmpfs storage is allowed. resolve already applied the tmpfs
 	// default, so any other value is a misconfiguration.
-	if c.NestedDocker.Storage != DefaultNestedStorage {
-		errs = append(errs, fmt.Errorf("nestedDocker.storage: only %q is supported", DefaultNestedStorage))
+	if c.DindRunner.Storage != DefaultDindStorage {
+		errs = append(errs, fmt.Errorf("dindRunner.storage: only %q is supported", DefaultDindStorage))
 	}
-	if c.NestedDocker.StorageSize <= 0 {
-		errs = append(errs, fmt.Errorf("nestedDocker.storageSize: must be positive"))
+	if c.DindRunner.StorageSize <= 0 {
+		errs = append(errs, fmt.Errorf("dindRunner.storageSize: must be positive"))
 	}
 	return errs
 }
@@ -340,7 +340,7 @@ func validateDockerHost(host string) error {
 // existing bridge or user-defined network is allowed. container:<id-or-name>
 // shares another container's network namespace, which breaks isolation like
 // host mode and is rejected by the security contract that forbids sharing the
-// runner's host namespace. The nested-docker inner network is operated within
+// runner's host namespace. The dind-runner inner network is operated within
 // the same constraint.
 func validateNetwork(network string) error {
 	if network == "" {
@@ -360,7 +360,7 @@ func validateNetwork(network string) error {
 }
 
 // validateImage rejects latest and references without tag/digest. standard
-// allows a digest or a version tag; nested-docker allows only digest
+// allows a digest or a version tag; dind-runner allows only digest
 // references. Floating references such as latest make configurations
 // unreproducible and are rejected for every profile. Syntax validation is
 // delegated to distribution/reference ParseNormalizedNamed, and only
@@ -397,8 +397,8 @@ func validateImage(image, profile string) error {
 		return fmt.Errorf("tag %q is not allowed", "latest")
 	}
 	if _, ok := ref.(reference.Digested); !ok {
-		if profile == ProfileNestedDocker {
-			return fmt.Errorf("nested-docker profile requires a digest reference")
+		if profile == ProfileDindRunner {
+			return fmt.Errorf("dind-runner profile requires a digest reference")
 		}
 		// A tag makes a digest unnecessary. Only references with neither tag
 		// nor digest are rejected.

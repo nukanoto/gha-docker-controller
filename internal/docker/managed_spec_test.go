@@ -1,5 +1,5 @@
 // managed_spec_test.go consolidates the pure unit tests of BuildManagedSpec
-// into one file. The standard / nested-docker delta is expressed as table
+// into one file. The standard /dind-runner delta is expressed as table
 // rows, and the common security fields (privileged=false, host
 // namespace/socket/device/mount prohibitions, cap drop/add, resources,
 // network, stop timeout) are checked once in a common check. Only the
@@ -58,13 +58,13 @@ func testConfig(t *testing.T, profile, runtime string) *config.Config {
 			DNS:                 []string{"1.1.1.1"},
 			ExtraHosts:          []string{"db:127.0.0.1"},
 		},
-		NestedDocker: config.NestedDockerConfig{
-			StorageSize: config.DefaultNestedStorageSize,
+		DindRunner: config.DindRunnerConfig{
+			StorageSize: config.DefaultDindStorageSize,
 		},
 	}
-	if profile == config.ProfileNestedDocker {
-		// nested-docker carries the full allowed capability set by default.
-		cfg.Runner.CapAdd = config.NestedCapabilities()
+	if profile == config.ProfileDindRunner {
+		// dind-runner carries the full allowed capability set by default.
+		cfg.Runner.CapAdd = config.DindCapabilities()
 	}
 	return cfg
 }
@@ -99,7 +99,7 @@ func mustBuild(t *testing.T, cfg *config.Config) ManagedSpec {
 
 // TestBuildManagedSpec verifies all fields of both profiles in a table.
 // Each row carries only the profile delta (user, entrypoint, cap add,
-// nested tmpfs mount, runtime value); the common security fields are
+// dind tmpfs mount, runtime value); the common security fields are
 // checked once in a common check. The configured runtime (runsc/runc),
 // User, Cmd run.sh, CapDrop ALL, non-privileged, non-host, resources,
 // security options, six labels, JIT env, DNS/extraHosts and
@@ -112,15 +112,15 @@ func TestBuildManagedSpec(t *testing.T) {
 		user       string
 		entrypoint []string
 		capAdd     []string
-		nestedTmp  bool
+		dindTmp    bool
 		// timeoutEnv is the exact entrypoint timeout env that only
-		// nested-docker has. standard keeps it empty.
+		// dind-runner has. standard keeps it empty.
 		timeoutEnv []string
 	}{
 		{name: "standard/runsc", profile: config.ProfileStandard, runtime: "runsc", user: "runner"},
 		{name: "standard/runc", profile: config.ProfileStandard, runtime: "runc", user: "runner"},
-		{name: "nested/runsc", profile: config.ProfileNestedDocker, runtime: "runsc", user: "0:0",
-			entrypoint: []string{"/usr/local/bin/gha-nested-entrypoint"}, capAdd: config.NestedCapabilities(), nestedTmp: true,
+		{name: "dind/runsc", profile: config.ProfileDindRunner, runtime: "runsc", user: "0:0",
+			entrypoint: []string{"/usr/local/bin/gha-dind-entrypoint"}, capAdd: config.DindCapabilities(), dindTmp: true,
 			timeoutEnv: []string{"PROVISIONING_TIMEOUT_SECONDS=300", "STOP_TIMEOUT_SECONDS=30"}},
 	}
 	for _, tc := range cases {
@@ -166,7 +166,7 @@ func TestBuildManagedSpec(t *testing.T) {
 				t.Fatal("tty/stdin は無効でなければなりません")
 			}
 
-			// The three JIT env values (nested-docker appends the
+			// The three JIT env values (dind-runner appends the
 			// profile-specific timeout env exactly at the end; the ceiling
 			// seconds of the testConfig defaults 5m/30s go in as-is)
 			wantEnv := []string{
@@ -260,21 +260,21 @@ func TestBuildManagedSpec(t *testing.T) {
 				t.Fatalf("extraHosts が不正です: %v", hc.ExtraHosts)
 			}
 
-			// Profile delta: the fixed nested /var/lib/docker tmpfs (mode
+			// Profile delta: the fixed dind /var/lib/docker tmpfs (mode
 			// 0700, storageSize). standard has no mounts.
-			if tc.nestedTmp {
+			if tc.dindTmp {
 				if len(hc.Mounts) != 1 {
-					t.Fatalf("nested の mount は 1 個でなければなりません: %v", hc.Mounts)
+					t.Fatalf("dind の mount は 1 個でなければなりません: %v", hc.Mounts)
 				}
 				m := hc.Mounts[0]
 				if m.Type != mount.TypeTmpfs || m.Target != "/var/lib/docker" || m.Source != "" {
-					t.Fatalf("nested tmpfs mount が不正です: %+v", m)
+					t.Fatalf("dind tmpfs mount が不正です: %+v", m)
 				}
-				if m.TmpfsOptions == nil || m.TmpfsOptions.SizeBytes != int64(cfg.NestedDocker.StorageSize) {
-					t.Fatalf("nested tmpfs の size が不正です: %+v", m.TmpfsOptions)
+				if m.TmpfsOptions == nil || m.TmpfsOptions.SizeBytes != int64(cfg.DindRunner.StorageSize) {
+					t.Fatalf("dind tmpfs の size が不正です: %+v", m.TmpfsOptions)
 				}
 				if m.TmpfsOptions.Mode != 0o700 {
-					t.Fatalf("nested tmpfs の mode は 0700 でなければなりません: %o", m.TmpfsOptions.Mode)
+					t.Fatalf("dind tmpfs の mode は 0700 でなければなりません: %o", m.TmpfsOptions.Mode)
 				}
 			} else if len(hc.Mounts) != 0 {
 				t.Fatalf("standard に mount があります: %v", hc.Mounts)
@@ -284,7 +284,7 @@ func TestBuildManagedSpec(t *testing.T) {
 }
 
 // TestBuildManagedSpec_Prohibited is the table test of the prohibited
-// settings the builder must not produce. It covers the nested/runc mismatch
+// settings the builder must not produce. It covers the dind/runc mismatch
 // and every shared prohibition.
 func TestBuildManagedSpec_Prohibited(t *testing.T) {
 	cases := []struct {
@@ -295,8 +295,8 @@ func TestBuildManagedSpec_Prohibited(t *testing.T) {
 		inputMutate func(*ManagedSpecInput)
 		wantErr     string
 	}{
-		{name: "nested は runc を拒否", profile: config.ProfileNestedDocker, runtime: "runc", wantErr: "not allowed for nested-docker profile"},
-		{name: "nested の CapAdd に 17 個外", profile: config.ProfileNestedDocker, mutate: func(c *config.Config) { c.Runner.CapAdd = []string{"SYS_TIME"} }, wantErr: "not in the nested-docker allowed set"},
+		{name: "dind は runc を拒否", profile: config.ProfileDindRunner, runtime: "runc", wantErr: "not allowed for dind-runner profile"},
+		{name: "dind の CapAdd に 17 個外", profile: config.ProfileDindRunner, mutate: func(c *config.Config) { c.Runner.CapAdd = []string{"SYS_TIME"} }, wantErr: "not in the dind-runner allowed set"},
 		{name: "standard の CapAdd を拒否", profile: config.ProfileStandard, mutate: func(c *config.Config) { c.Runner.CapAdd = []string{"CHOWN"} }, wantErr: "must be empty for standard profile"},
 		{name: "CapDrop は ALL 以外を拒否", mutate: func(c *config.Config) { c.Runner.CapDrop = []string{"SYS_ADMIN"} }, wantErr: "capDrop must be exactly"},
 		{name: "read-only rootfs を拒否", mutate: func(c *config.Config) { c.Runner.ReadOnlyRootfs = true }, wantErr: "readOnlyRootfs must be false"},
@@ -312,7 +312,7 @@ func TestBuildManagedSpec_Prohibited(t *testing.T) {
 		{name: "seccomp unconfined を拒否", mutate: func(c *config.Config) { c.Runner.Seccomp = "unconfined" }, wantErr: "unconfined"},
 		{name: "apparmor unconfined を拒否", mutate: func(c *config.Config) { c.Runner.AppArmor = "unconfined" }, wantErr: "unconfined"},
 		{name: "invalid runtime 名を拒否", runtime: "run sc", wantErr: "not a valid runtime name"},
-		{name: "nested の /var/lib/docker tmpfs 重複を拒否", profile: config.ProfileNestedDocker, mutate: func(c *config.Config) { c.Runner.Tmpfs = []string{"/var/lib/docker:1g"} }, wantErr: "reserved for the nested-docker profile"},
+		{name: "dind の /var/lib/docker tmpfs 重複を拒否", profile: config.ProfileDindRunner, mutate: func(c *config.Config) { c.Runner.Tmpfs = []string{"/var/lib/docker:1g"} }, wantErr: "reserved for the dind-runner profile"},
 		{name: "JIT config 空を拒否", inputMutate: func(in *ManagedSpecInput) { in.JITConfig = "" }, wantErr: "JIT config is empty"},
 		{name: "runner ID 非正を拒否", inputMutate: func(in *ManagedSpecInput) { in.Identity.RunnerID = 0 }, wantErr: "positive scale set id and runner id"},
 		{name: "runner name 非 canonical を拒否", inputMutate: func(in *ManagedSpecInput) { in.Identity.RunnerName = "evil" }, wantErr: "not a valid canonical runner name"},

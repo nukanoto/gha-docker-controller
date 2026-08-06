@@ -1,7 +1,7 @@
-# Example workflow for the nested-docker profile of gha-docker-controller.
+# Example workflow for the dind-runner profile of gha-docker-controller.
 #
 # This workflow runs inner Docker build / compose / container / service on a
-# nested-docker profile runner (a separate dockerd inside a runsc sandbox).
+# dind-runner profile runner (a separate dockerd inside a runsc sandbox).
 # Commit it to .github/workflows/ of a dedicated repository to use it.
 #
 # Prerequisites:
@@ -9,8 +9,8 @@
 #     dedicated name starting with ghadc-e2e-). Do not use production Scale
 #     Set names.
 #   - The job container image is set by the required workflow_dispatch input
-#     nested_image. Always enter the project nested image
-#     (images/nested-docker/) in repository@sha256:<64 lowercase hex> digest
+#    dind_image. Always enter the project dind image
+#     (images/dind-runner/) in repository@sha256:<64 lowercase hex> digest
 #     form. The runner overrides the job container entrypoint to tail, so
 #     dockerd does not start inside the job container. The image must have
 #     docker CLI, git, curl, and bash.
@@ -20,30 +20,30 @@
 #     only explicit localhost ports.
 #   - Install compose as a standalone binary pinned by version + sha256
 #     (never latest).
-#   - Set nestedDocker.storageSize in the E2E config large enough to cover
+#   - Set dindRunner.storageSize in the E2E config large enough to cover
 #     pulling and building inner images (for example 16GiB).
-name: gha-docker-controller nested docker example
+name: gha-docker-controller dind docker example
 
 on:
   workflow_dispatch:
     inputs:
-      nested_image:
+     dind_image:
         # Required input. No default.
         description: >-
-          job container に使う project の nested image
-          (images/nested-docker/) を repository@sha256:<64 lowercase hex>
+          job container に使う project の dind image
+          (images/dind-runner/) を repository@sha256:<64 lowercase hex>
           形式の digest で指定する。
         required: true
         type: string
 
 jobs:
-  nested:
-    # Specify the dedicated nested Scale Set name (scaleSet.name of the E2E config).
-    runs-on: production-nested
+  dind:
+    # Specify the dedicated dind Scale Set name (scaleSet.name of the E2E config).
+    runs-on: production-dind
     container:
-      # Use the nested_image input value (repository@sha256:<64 lowercase hex>
+      # Use the dind_image input value (repository@sha256:<64 lowercase hex>
       # form) as-is. No default or floating tag.
-      image: ${{ inputs.nested_image }}
+      image: ${{ inputs. dind_image }}
       # Use inner --network host only.
       options: --network host
     services:

@@ -2,7 +2,7 @@
 # The Scale Set System label matches the Scale Set name.
 # Set runs-on to the same value as scaleSet.name in the config.
 # This workflow targets standard profile runners; see
-# examples/nested-docker-workflow.yaml for the nested-docker profile example.
+# examples/dind-runner-workflow.yaml for the dind-runner profile example.
 name: gha-docker-controller example
 
 on:

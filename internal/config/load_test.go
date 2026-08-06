@@ -213,7 +213,7 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 		{"docker", c.Docker, DockerConfig{Host: DefaultDockerHost, Runtime: DefaultRuntime, Network: DefaultNetwork, PullPolicy: DefaultPullPolicy}},
 		{"runner security", c.Runner.CapDrop, []string{"ALL"}},
 		{"runner privilege", c.Runner.NoNewPrivileges, true},
-		{"nestedDocker", c.NestedDocker, NestedDockerConfig{Storage: DefaultNestedStorage, StorageSize: DefaultNestedStorageSize}},
+		{"dindRunner", c.DindRunner, DindRunnerConfig{Storage: DefaultDindStorage, StorageSize: DefaultDindStorageSize}},
 		{"health", c.Health, HealthConfig{Listen: DefaultHealthListen}},
 		{"shutdown", c.Shutdown, ShutdownConfig{BusyPolicy: DefaultShutdownPolicy, Grace: Duration(DefaultShutdownGrace)}},
 		{"log", c.Log, LogConfig{Format: DefaultLogFormat, Level: DefaultLogLevel}},
@@ -280,26 +280,26 @@ func TestLoad_RunnerNetworkInheritanceAndMismatch(t *testing.T) {
 	checkErr(t, "runner host network is rejected", "host network is not allowed", err)
 }
 
-// TestLoad_NestedProfileDefaults verifies that nested-docker requires a
+// TestLoad_DindProfileDefaults verifies thatdind-runner requires a
 // digest image and that the default CapAdd is the set of 17 capabilities.
-func TestLoad_NestedProfileDefaults(t *testing.T) {
+func TestLoad_DindProfileDefaults(t *testing.T) {
 	base := baseWithKey(t)
 	imageLine := "  image: ghcr.io/actions/actions-runner:2.336.0\n"
-	nestedImage := "  image: ghcr.io/actions/actions-runner@" + sha256Digest + "\n"
+	dindImage := "  image: ghcr.io/actions/actions-runner@" + sha256Digest + "\n"
 
-	// A complete nested config (digest image) gets the default of 17 CapAdd
+	// A complete dind config (digest image) gets the default of 17 CapAdd
 	// capabilities.
-	doc := strings.Replace(base, imageLine, nestedImage+"  profile: nested-docker\n", 1)
+	doc := strings.Replace(base, imageLine, dindImage+"  profile: dind-runner\n", 1)
 	c, _ := loadDoc(t, doc)
-	if c.Runner.Profile != ProfileNestedDocker {
-		t.Fatalf("nested の profile が反映されていません: %+v", c.NestedDocker)
+	if c.Runner.Profile != ProfileDindRunner {
+		t.Fatalf("dind の profile が反映されていません: %+v", c.DindRunner)
 	}
-	if !reflect.DeepEqual(c.Runner.CapAdd, NestedCapabilities()) {
-		t.Fatalf("nested の CapAdd 既定が 17 個の集合と一致しません: %v", c.Runner.CapAdd)
+	if !reflect.DeepEqual(c.Runner.CapAdd, DindCapabilities()) {
+		t.Fatalf("dind の CapAdd 既定が 17 個の集合と一致しません: %v", c.Runner.CapAdd)
 	}
 
 	// A subset CapAdd is accepted and reflected as specified.
-	doc = strings.Replace(base, imageLine, nestedImage+"  profile: nested-docker\n  capAdd: [\"CHOWN\"]\n", 1)
+	doc = strings.Replace(base, imageLine, dindImage+"  profile: dind-runner\n  capAdd: [\"CHOWN\"]\n", 1)
 	if c, _ := loadDoc(t, doc); !reflect.DeepEqual(c.Runner.CapAdd, []string{"CHOWN"}) {
 		t.Fatalf("CapAdd の部分集合が反映されていません: %v", c.Runner.CapAdd)
 	}
@@ -310,13 +310,13 @@ func TestLoad_NestedProfileDefaults(t *testing.T) {
 		with    string
 		wantErr string
 	}{
-		{name: "nested tag image is rejected", with: imageLine + "  profile: nested-docker\n", wantErr: "requires a digest reference"},
-		{name: "nested runc is rejected", with: nestedImage + "  profile: nested-docker\n", wantErr: "docker.runtime: nested-docker profile requires"},
+		{name: "dind tag image is rejected", with: imageLine + "  profile: dind-runner\n", wantErr: "requires a digest reference"},
+		{name: "dind runc is rejected", with: dindImage + "  profile: dind-runner\n", wantErr: "docker.runtime: dind-runner profile requires"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			doc := strings.Replace(base, imageLine, tt.with, 1)
-			if tt.name == "nested runc is rejected" {
+			if tt.name == "dind runc is rejected" {
 				doc = strings.Replace(doc, "  runtime: runsc\n", "  runtime: runc\n", 1)
 			}
 			_, _, err := Load(writeConfig(t, doc))

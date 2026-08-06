@@ -52,8 +52,8 @@ export GITHUB_TOKEN=github_pat_xxxxxxxxxxxx
 
 You can run the application using Docker Compose.
 
-```yaml
-```
+See [`docs/compose.md`](docs/compose.md) for the required bind mounts and
+the commands to build, start, check, and stop the controller.
 
 ## Configuration
 
@@ -121,7 +121,7 @@ Keep the following points in mind when configuring the application:
 * `memorySwap` must be greater than or equal to `memory`
 * `latest` cannot be used for `runner.image`
 * The `standard` profile requires either a version tag or a digest
-* The `nested-docker` profile requires a digest
+* The `dind-runner` profile requires a digest
 
 Examples of resource, DNS, extra hosts, tmpfs, ulimit, seccomp, and AppArmor settings are available in `config.example.yaml`.
 
@@ -155,9 +155,9 @@ jobs:
           echo "runner is ready"
 ```
 
-### `nested-docker` Profile
+### `dind-runner` Profile
 
-The `nested-docker` profile starts an independent Docker daemon inside the runner.
+The `dind-runner` profile starts an independent Docker daemon inside the runner.
 
 Configure the host's `/etc/docker/daemon.json` as follows:
 
@@ -179,7 +179,7 @@ Modify `config.yaml` as follows:
 
 ```yaml
 scaleSet:
-  name: production-nested
+  name: production-dind
   runnerGroup: default
   minRunners: 0
   maxRunners: 2
@@ -191,8 +191,8 @@ docker:
   pullPolicy: always
 
 runner:
-  image: ghcr.io/example/gha-nested-runner@sha256:<digest>
-  profile: nested-docker
+  image: ghcr.io/example/gha-dind-runner@sha256:<digest>
+  profile: dind-runner
   cpu: "4"
   memory: 8GiB
   memorySwap: 8GiB
@@ -200,7 +200,7 @@ runner:
   capDrop: ["ALL"]
   noNewPrivileges: true
 
-nestedDocker:
+dindRunner:
   storage: tmpfs
   storageSize: 16GiB
 ```

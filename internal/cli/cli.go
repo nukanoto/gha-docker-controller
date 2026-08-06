@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 
 	"github.com/nukanoto/gha-docker-controller/internal/app"
 	"github.com/nukanoto/gha-docker-controller/internal/buildinfo"
@@ -42,6 +43,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// No command: print usage as an error and exit with a usage error.
 		printUsage(stderr)
 		return ExitUsage
+	}
+	if args[0] == "--config" || strings.HasPrefix(args[0], "--config=") {
+		path := strings.TrimPrefix(args[0], "--config=")
+		if args[0] == "--config" {
+			if len(args) < 2 || args[1] == "" {
+				fmt.Fprintln(stderr, "--config requires a path")
+				printUsage(stderr)
+				return ExitUsage
+			}
+			path = args[1]
+			args = args[2:]
+		} else {
+			args = args[1:]
+		}
+		if path == "" {
+			fmt.Fprintln(stderr, "--config requires a path")
+			printUsage(stderr)
+			return ExitUsage
+		}
+		if len(args) == 0 {
+			fmt.Fprintln(stderr, "--config must be followed by a command")
+			printUsage(stderr)
+			return ExitUsage
+		}
+		args = append([]string{args[0], "--config", path}, args[1:]...)
 	}
 	switch args[0] {
 	case "serve":
@@ -94,7 +120,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 // runCheck runs the check subcommand: load config, set up the logger, and
 // delegate to app.Check. check is read-only, but depending on the pull
 // policy an image pull can change the Docker image store, so the help states
-// this. The help also states that nested-docker runtimeArgs cannot be
+// this. The help also states that dind-runner runtimeArgs cannot be
 // verified.
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
@@ -195,7 +221,7 @@ SIGINT/SIGTERM で graceful shutdown する。設定の詳細は config.example.
 
 // printCheckUsage prints the check flags and description. It states the two
 // ways check is not fully read-only: the Docker image store change from
-// image pulls, and the non-verification of nested-docker runtimeArgs.
+// image pulls, and the non-verification of dind-runner runtimeArgs.
 func printCheckUsage(fs *flag.FlagSet) {
 	fmt.Fprintf(fs.Output(), `Usage: gha-docker-controller check [options]
 
@@ -205,7 +231,7 @@ read-only ではない点が 2 つある。
 
   1. pull policy に応じて image を pull するため、Docker image store を
      変更することがある。
-  2. nested-docker profile の runtimeArgs (--net-raw など) は公式 Docker
+  2. dind-runner profile の runtimeArgs (--net-raw など) は公式 Docker
      API で introspection できないため検証しない。host 側の設定は operator
      が daemon.json を目視確認し、check は常に warning を出す。
 

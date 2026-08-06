@@ -1,8 +1,8 @@
-FROM ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda
+FROM ghcr.io/actions/actions-runner
 
 USER root
 
-# Add only the tools needed to run nested Docker.
+# Add only the tools needed to run dind Docker.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         iproute2 \
@@ -20,11 +20,11 @@ RUN set -eu; \
         *) printf 'unexpected dockerd version: %s\n' "$version" >&2; exit 1 ;; \
     esac
 
-COPY entrypoint.sh /usr/local/bin/gha-nested-entrypoint
-RUN chmod 0755 /usr/local/bin/gha-nested-entrypoint
+COPY entrypoint.sh /usr/local/bin/gha-dind-entrypoint
+RUN chmod 0755 /usr/local/bin/gha-dind-entrypoint
 
-LABEL io.github.nukanoto.gha-docker-controller.profile="nested-docker-v1" \
+LABEL io.github.nukanoto.gha-docker-controller.profile="dind-runner-v1" \
       io.github.nukanoto.gha-docker-controller.inner-docker="29.6.1"
 
 USER root
-ENTRYPOINT ["/usr/local/bin/gha-nested-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/gha-dind-entrypoint"]

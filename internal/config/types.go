@@ -17,8 +17,8 @@ const (
 
 	// ProfileStandard is the standard profile.
 	ProfileStandard = "standard"
-	// ProfileNestedDocker is the nested-docker profile.
-	ProfileNestedDocker = "nested-docker"
+	// ProfileDindRunner is the dind-runner profile.
+	ProfileDindRunner = "dind-runner"
 
 	// PullPolicyAlways pulls the image every time.
 	PullPolicyAlways = "always"
@@ -50,14 +50,14 @@ const (
 // Config is the validated runtime config. Load creates it and it is never
 // mutated afterwards.
 type Config struct {
-	GitHub       GitHubConfig
-	ScaleSet     ScaleSetConfig
-	Docker       DockerConfig
-	Runner       RunnerConfig
-	NestedDocker NestedDockerConfig
-	Health       HealthConfig
-	Shutdown     ShutdownConfig
-	Log          LogConfig
+	GitHub     GitHubConfig
+	ScaleSet   ScaleSetConfig
+	Docker     DockerConfig
+	Runner     RunnerConfig
+	DindRunner DindRunnerConfig
+	Health     HealthConfig
+	Shutdown   ShutdownConfig
+	Log        LogConfig
 }
 
 // GitHubConfig is the GitHub.com connection and authentication config.
@@ -123,15 +123,15 @@ type DockerConfig struct {
 }
 
 // RunnerConfig is the runner container config. There are two profiles,
-// standard and nested-docker, and the allowed values of security-related
+// standard and dind-runner, and the allowed values of security-related
 // fields are fixed per profile (for example validateRunnerSecurity).
 type RunnerConfig struct {
 	// Image is an image reference with a digest or a version tag. latest and
 	// references without tag/digest are rejected to prevent unreproducible
-	// floating configurations. nested-docker allows only digest references
+	// floating configurations. dind-runner allows only digest references
 	// because the inner dockerd behavior is determined by the image.
 	Image string
-	// Profile is ProfileStandard or ProfileNestedDocker.
+	// Profile is ProfileStandard or ProfileDindRunner.
 	Profile string
 	// CPU is the CPU limit in NanoCPUs. Mandatory.
 	CPU NanoCPUs
@@ -158,8 +158,8 @@ type RunnerConfig struct {
 	// CapDrop is always ["ALL"]. Anything else is rejected.
 	CapDrop []string
 	// CapAdd is the additional capabilities per profile. Empty for standard;
-	// only a subset of the 17 nestedCapAdd capabilities is allowed for
-	// nested-docker.
+	// only a subset of the 17 dindCapAdd capabilities is allowed for
+	// dind-runner.
 	CapAdd []string
 	// Seccomp is the path of a seccomp profile JSON file. Empty means daemon
 	// default. "unconfined" is rejected.
@@ -178,11 +178,11 @@ type RunnerConfig struct {
 	NoNewPrivileges bool
 }
 
-// NestedDockerConfig is the nested-docker profile config. The inner dockerd
+// DindRunnerConfig is the dind-runner profile config. The inner dockerd
 // is sandboxed with runsc, and the host daemon runsc runtimeArgs cannot be
 // verified through the Docker API, so verification is left to a manual check
 // by the operator (see the README procedure).
-type NestedDockerConfig struct {
+type DindRunnerConfig struct {
 	// Storage is the storage kind for /var/lib/docker. Only tmpfs is allowed
 	// and it is also the default.
 	Storage string
@@ -232,14 +232,14 @@ func (c *Config) GitHubConfigURL() string {
 // distinguish unset from zero values. Unknown fields and old-style keys are
 // rejected by yaml.v3 KnownFields(true).
 type rawConfig struct {
-	GitHub       rawGitHub       `yaml:"github"`
-	ScaleSet     rawScaleSet     `yaml:"scaleSet"`
-	Docker       rawDocker       `yaml:"docker"`
-	Runner       rawRunner       `yaml:"runner"`
-	NestedDocker rawNestedDocker `yaml:"nestedDocker"`
-	Health       rawHealth       `yaml:"health"`
-	Shutdown     rawShutdown     `yaml:"shutdown"`
-	Log          rawLog          `yaml:"log"`
+	GitHub     rawGitHub     `yaml:"github"`
+	ScaleSet   rawScaleSet   `yaml:"scaleSet"`
+	Docker     rawDocker     `yaml:"docker"`
+	Runner     rawRunner     `yaml:"runner"`
+	DindRunner rawDindRunner `yaml:"dindRunner"`
+	Health     rawHealth     `yaml:"health"`
+	Shutdown   rawShutdown   `yaml:"shutdown"`
+	Log        rawLog        `yaml:"log"`
 }
 
 type rawGitHub struct {
@@ -295,7 +295,7 @@ type rawRunner struct {
 	NoNewPrivileges *bool             `yaml:"noNewPrivileges"`
 }
 
-type rawNestedDocker struct {
+type rawDindRunner struct {
 	// Storage is the storage kind for /var/lib/docker. Currently only tmpfs
 	// is allowed.
 	Storage     *string `yaml:"storage"`
