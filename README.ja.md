@@ -112,7 +112,9 @@ github:
 - Repository scope では `github.repository` も指定します
 - `scaleSet.name` は workflow の `runs-on` に使う名前です
 - `maxRunners` は 1 以上かつ `minRunners` 以上にします
-- `memorySwap` は `memory` 以上にします
+- `cpu`、`memory`、`memorySwap`、`pidsLimit` は省略または `0` で無制限になります
+- `memory` と `memorySwap` がともに正数の場合、`memorySwap` は `memory` 以上にします
+- `memory` が無制限のとき、正数の `memorySwap` は指定できません
 - `runner.image` に `latest` は使用できません
 - `standard` profile は version tag または digest が必要です
 - `dind-runner` profile は digest が必要です

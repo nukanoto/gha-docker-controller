@@ -52,8 +52,8 @@ export GITHUB_TOKEN=github_pat_xxxxxxxxxxxx
 
 You can run the application using Docker Compose.
 
-See [`docs/compose.md`](docs/compose.md) for the required bind mounts and
-the commands to build, start, check, and stop the controller.
+```yaml
+```
 
 ## Configuration
 

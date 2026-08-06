@@ -48,7 +48,7 @@ func TestParseDuration_UnitRequiredAndPositive(t *testing.T) {
 				return
 			}
 			if got != Duration(tt.want) {
-				t.Fatalf("parse 結果が不正です: 期待値 %v、実測値 %v", tt.want, got)
+				t.Fatalf("parse resultis invalid: expected %v、actual %v", tt.want, got)
 			}
 		})
 	}
@@ -76,7 +76,7 @@ func TestParseMemory_UnitsAndUnlimited(t *testing.T) {
 		{name: "t is 1024^4", in: "1t", want: 1 << 40},
 		{name: "tb is 1024^4", in: "1tb", want: 1 << 40},
 		{name: "fractional with unit", in: "1.5g", want: int64(1.5 * 1024 * 1024 * 1024)},
-		{name: "zero is unlimited and rejected", in: "0", wantErr: "unlimited memory value"},
+		{name: "zero is unlimited", in: "0", want: 0},
 		{name: "minus one is unlimited and rejected", in: "-1", wantErr: "unlimited memory value"},
 		{name: "unlimited keyword rejected", in: "unlimited", wantErr: "unlimited memory value"},
 		{name: "unset keyword rejected", in: "unset", wantErr: "unlimited memory value"},
@@ -93,7 +93,7 @@ func TestParseMemory_UnitsAndUnlimited(t *testing.T) {
 			got, err := parseMemory(tt.in)
 			checkErr(t, tt.name, tt.wantErr, err)
 			if tt.wantErr == "" && got != tt.want {
-				t.Fatalf("parse 結果が不正です: 期待値 %d、実測値 %d", tt.want, got)
+				t.Fatalf("parse resultis invalid: expected %d、actual %d", tt.want, got)
 			}
 		})
 	}
@@ -111,7 +111,7 @@ func TestMemoryUnmarshal_YAMLScalarForms(t *testing.T) {
 		{name: "bare integer bytes", doc: "4096", want: Memory(4096)},
 		{name: "gib string", doc: `"4GiB"`, want: Memory(4 << 30)},
 		{name: "mb string", doc: `"1mb"`, want: Memory(1024 * 1024)},
-		{name: "zero is rejected", doc: "0", wantErr: "unlimited memory value"},
+		{name: "zero is unlimited", doc: "0", want: 0},
 		{name: "minus one is rejected", doc: "-1", wantErr: "unlimited memory value"},
 		{name: "fractional bytes are rejected", doc: "1.5", wantErr: "integer number of bytes"},
 		{name: "negative string is rejected", doc: `"-512MiB"`, wantErr: "invalid memory value"},
@@ -123,7 +123,7 @@ func TestMemoryUnmarshal_YAMLScalarForms(t *testing.T) {
 				return
 			}
 			if got != tt.want {
-				t.Fatalf("parse 結果が不正です: 期待値 %d、実測値 %d", tt.want, got)
+				t.Fatalf("parse resultis invalid: expected %d、actual %d", tt.want, got)
 			}
 		})
 	}
@@ -141,8 +141,8 @@ func TestParseCPU_PositiveOnly(t *testing.T) {
 		{name: "integer cpu", doc: "2", want: NanoCPUs(2000000000)},
 		{name: "decimal cpu", doc: "2.5", want: NanoCPUs(2500000000)},
 		{name: "quoted string cpu", doc: `"1.5"`, want: NanoCPUs(1500000000)},
-		{name: "zero is rejected", doc: "0", wantErr: "cpu must be positive"},
-		{name: "negative is rejected", doc: "-1", wantErr: "cpu must be positive"},
+		{name: "zero is unlimited", doc: "0", want: 0},
+		{name: "negative is rejected", doc: "-1", wantErr: "cpu must be non-negative"},
 		{name: "unlimited is rejected", doc: "unlimited", wantErr: "invalid cpu value"},
 		{name: "unset is rejected", doc: "unset", wantErr: "invalid cpu value"},
 		{name: "too large is rejected", doc: "1e7", wantErr: "cpu value is too large"},
@@ -156,7 +156,7 @@ func TestParseCPU_PositiveOnly(t *testing.T) {
 				return
 			}
 			if got != tt.want {
-				t.Fatalf("parse 結果が不正です: 期待値 %d、実測値 %d", tt.want, got)
+				t.Fatalf("parse resultis invalid: expected %d、actual %d", tt.want, got)
 			}
 		})
 	}
@@ -192,7 +192,7 @@ func TestParseUlimit_NameSoftHard(t *testing.T) {
 				return
 			}
 			if got != tt.want {
-				t.Fatalf("parse 結果が不正です: 期待値 %+v、実測値 %+v", tt.want, got)
+				t.Fatalf("parse resultis invalid: expected %+v、actual %+v", tt.want, got)
 			}
 		})
 	}
@@ -213,7 +213,7 @@ func TestNormalizeDockerHost_TrimsTrailingSlash(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := normalizeDockerHost(tt.in); got != tt.want {
-				t.Fatalf("正規化結果が不正です: 期待値 %q、実測値 %q", tt.want, got)
+				t.Fatalf("normalization result is invalid: expected %q、actual %q", tt.want, got)
 			}
 		})
 	}
@@ -238,7 +238,7 @@ func TestValidName_AllowedCharacters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := validName(tt.in); got != tt.want {
-				t.Fatalf("validName(%q) が不正です: 期待値 %v、実測値 %v", tt.in, tt.want, got)
+				t.Fatalf("validName(%q) is invalid: expected %v、actual %v", tt.in, tt.want, got)
 			}
 		})
 	}

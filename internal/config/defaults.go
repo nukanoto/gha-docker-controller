@@ -5,9 +5,8 @@ import (
 	"time"
 )
 
-// Defaults are fixed across this package. maxRunners, image, CPU, memory,
-// memorySwap and pidsLimit are mandatory and have no default (validate rejects
-// them when missing).
+// Defaults are fixed across this package. Zero CPU, memory, memorySwap and
+// pidsLimit values mean unlimited resources.
 
 const (
 	// DefaultGitHubURL is the default GitHub.com base URL.

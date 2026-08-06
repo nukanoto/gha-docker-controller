@@ -72,21 +72,23 @@ func (c *Config) validate() []error {
 
 	// Runner image / profile
 	errs = append(errs, validateRunnerProfile(c)...)
-	// Resources are mandatory
-	if c.Runner.CPU <= 0 {
-		add("runner.cpu: required, must be > 0")
+	// Zero resource values mean unlimited. Negative values remain invalid.
+	if c.Runner.CPU < 0 {
+		add("runner.cpu: must be >= 0")
 	}
-	if c.Runner.Memory <= 0 {
-		add("runner.memory: required, must be > 0")
+	if c.Runner.Memory < 0 {
+		add("runner.memory: must be >= 0")
 	}
-	if c.Runner.MemorySwap <= 0 {
-		add("runner.memorySwap: required, must be > 0")
+	if c.Runner.MemorySwap < 0 {
+		add("runner.memorySwap: must be >= 0")
 	}
-	if c.Runner.MemorySwap < c.Runner.Memory {
+	if c.Runner.Memory == 0 && c.Runner.MemorySwap > 0 {
+		add("runner.memorySwap: cannot be limited when runner.memory is unlimited")
+	} else if c.Runner.Memory > 0 && c.Runner.MemorySwap > 0 && c.Runner.MemorySwap < c.Runner.Memory {
 		add("runner.memorySwap: must be >= runner.memory")
 	}
-	if c.Runner.PidsLimit <= 0 {
-		add("runner.pidsLimit: required, must be > 0")
+	if c.Runner.PidsLimit < 0 {
+		add("runner.pidsLimit: must be >= 0")
 	}
 	errs = append(errs, validateRunnerSecurity(c)...)
 	errs = append(errs, validateRunnerCapabilities(c)...)
@@ -468,7 +470,7 @@ func validateTmpfs(spec string) error {
 	// same rule as the Docker CLI.
 	var opts string
 	if len(parts) >= 2 && parts[1] != "" {
-		if _, err := parseMemory(parts[1]); err == nil && !strings.Contains(parts[1], ",") {
+		if size, err := parseMemory(parts[1]); err == nil && size > 0 && !strings.Contains(parts[1], ",") {
 			if len(parts) == 3 {
 				opts = parts[2]
 			}
@@ -480,7 +482,7 @@ func validateTmpfs(spec string) error {
 	}
 	for _, opt := range strings.Split(opts, ",") {
 		if v, ok := strings.CutPrefix(strings.TrimSpace(opt), "size="); ok {
-			if _, err := parseMemory(v); err != nil {
+			if size, err := parseMemory(v); err != nil || size <= 0 {
 				return fmt.Errorf("invalid tmpfs size option %q", opt)
 			}
 		}

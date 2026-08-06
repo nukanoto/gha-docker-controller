@@ -32,7 +32,7 @@ func TestValidateManagedSpec_ValidSpecs(t *testing.T) {
 		t.Run(tc.profile+"-"+tc.runtime, func(t *testing.T) {
 			spec := mustBuild(t, testConfig(t, tc.profile, tc.runtime))
 			if err := validateManagedSpec(spec); err != nil {
-				t.Fatalf("builder の出力が再検証を通りません: %v", err)
+				t.Fatalf("builder output failed re-validation: %v", err)
 			}
 		})
 	}
@@ -45,7 +45,7 @@ func TestValidateManagedSpec_ValidSpecs(t *testing.T) {
 func TestCreateManaged_RejectsTamperedSpec(t *testing.T) {
 	c, err := New("unix:///tmp/ghadc-test-no-daemon.sock", time.Second)
 	if err != nil {
-		t.Fatalf("client の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create client: %v", err)
 	}
 	cases := []struct {
 		name    string
@@ -89,9 +89,9 @@ func TestCreateManaged_RejectsTamperedSpec(t *testing.T) {
 		{name: "dind runtime 不一致", profile: config.ProfileDindRunner, tamper: func(s *ManagedSpec) { s.runtime = "runc" }, wantErr: "dind-runner profile requires runtime"},
 		{name: "standard runtime 不正", tamper: func(s *ManagedSpec) { s.runtime = "run sc" }, wantErr: "requires a valid runtime name"},
 		{name: "unknown profile", tamper: func(s *ManagedSpec) { s.profile = "evil" }, wantErr: "unknown profile"},
-		{name: "NanoCPUs 欠落", tamper: func(s *ManagedSpec) { s.create.HostConfig.Resources.NanoCPUs = 0 }, wantErr: "NanoCPUs must be positive"},
-		{name: "memory 欠落", tamper: func(s *ManagedSpec) { s.create.HostConfig.Resources.Memory = 0 }, wantErr: "memory must be positive"},
-		{name: "pidsLimit 欠落", tamper: func(s *ManagedSpec) { s.create.HostConfig.Resources.PidsLimit = nil }, wantErr: "pids limit must be positive"},
+		{name: "negative NanoCPUs", tamper: func(s *ManagedSpec) { s.create.HostConfig.Resources.NanoCPUs = -1 }, wantErr: "NanoCPUs must be non-negative"},
+		{name: "negative memory", tamper: func(s *ManagedSpec) { s.create.HostConfig.Resources.Memory = -1 }, wantErr: "memory must be non-negative"},
+		{name: "negative pidsLimit", tamper: func(s *ManagedSpec) { value := int64(-1); s.create.HostConfig.Resources.PidsLimit = &value }, wantErr: "pids limit must be non-negative"},
 		{name: "memorySwap < memory", tamper: func(s *ManagedSpec) {
 			s.create.HostConfig.Resources.MemorySwap = s.create.HostConfig.Resources.Memory - 1
 		}, wantErr: "memory swap must be >= memory"},
@@ -139,7 +139,7 @@ func TestCreateManaged_RejectsTamperedSpec(t *testing.T) {
 			tc.tamper(&spec)
 			_, err := c.CreateManaged(context.Background(), spec)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("CreateManaged が改変済み spec を拒否しませんでした: err=%v", err)
+				t.Fatalf("CreateManaged did not reject the modified spec: err=%v", err)
 			}
 		})
 	}

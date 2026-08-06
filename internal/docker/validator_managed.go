@@ -117,19 +117,25 @@ func validateManagedSpec(spec ManagedSpec) error {
 		}
 	}
 
-	// Resources must be positive
+	// Zero resources mean unlimited; negative values are invalid.
 	res := &hostCfg.Resources
-	if res.NanoCPUs <= 0 {
-		return fmt.Errorf("refusing to create: NanoCPUs must be positive (missing resource)")
+	if res.NanoCPUs < 0 {
+		return fmt.Errorf("refusing to create: NanoCPUs must be non-negative")
 	}
-	if res.Memory <= 0 {
-		return fmt.Errorf("refusing to create: memory must be positive (missing resource)")
+	if res.Memory < 0 {
+		return fmt.Errorf("refusing to create: memory must be non-negative")
 	}
-	if res.MemorySwap < res.Memory {
+	if res.Memory == 0 && res.MemorySwap > 0 {
+		return fmt.Errorf("refusing to create: memory swap cannot be limited when memory is unlimited")
+	}
+	if res.MemorySwap < 0 {
+		return fmt.Errorf("refusing to create: memory swap must be non-negative")
+	}
+	if res.Memory > 0 && res.MemorySwap > 0 && res.MemorySwap < res.Memory {
 		return fmt.Errorf("refusing to create: memory swap must be >= memory")
 	}
-	if res.PidsLimit == nil || *res.PidsLimit <= 0 {
-		return fmt.Errorf("refusing to create: pids limit must be positive (missing resource)")
+	if res.PidsLimit != nil && *res.PidsLimit < 0 {
+		return fmt.Errorf("refusing to create: pids limit must be non-negative")
 	}
 
 	// Host namespaces are forbidden. PID/UTS/Userns must not be shared with

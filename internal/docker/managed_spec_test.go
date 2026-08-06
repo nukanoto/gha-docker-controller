@@ -92,7 +92,7 @@ func mustBuild(t *testing.T, cfg *config.Config) ManagedSpec {
 	t.Helper()
 	spec, err := BuildManagedSpec(testInput(cfg))
 	if err != nil {
-		t.Fatalf("BuildManagedSpec が失敗しました: %v", err)
+		t.Fatalf("BuildManagedSpec failed: %v", err)
 	}
 	return spec
 }
@@ -130,40 +130,40 @@ func TestBuildManagedSpec(t *testing.T) {
 			input := testInput(cfg)
 
 			if spec.profile != tc.profile || spec.runtime != tc.runtime {
-				t.Fatalf("profile/runtime が不正です: profile=%q runtime=%q", spec.profile, spec.runtime)
+				t.Fatalf("profile/runtime is invalid: profile=%q runtime=%q", spec.profile, spec.runtime)
 			}
 			if spec.create.Name != input.ContainerName {
-				t.Fatalf("container name が不正です: %q", spec.create.Name)
+				t.Fatalf("container name is invalid: %q", spec.create.Name)
 			}
 
 			// Common container.Config contract
 			cc := spec.create.Config
 			if cc.Image != cfg.Runner.Image {
-				t.Fatalf("image が不正です: %q", cc.Image)
+				t.Fatalf("image is invalid: %q", cc.Image)
 			}
 			if cc.User != tc.user {
-				t.Fatalf("user が不正です: %q", cc.User)
+				t.Fatalf("user is invalid: %q", cc.User)
 			}
 			if cc.WorkingDir != "/home/runner" {
-				t.Fatalf("working dir が不正です: %q", cc.WorkingDir)
+				t.Fatalf("working dir is invalid: %q", cc.WorkingDir)
 			}
 			if len(cc.Cmd) != 1 || cc.Cmd[0] != "/home/runner/run.sh" {
-				t.Fatalf("command が不正です: %v", cc.Cmd)
+				t.Fatalf("command is invalid: %v", cc.Cmd)
 			}
 			if !slices.Equal(cc.Entrypoint, tc.entrypoint) {
-				t.Fatalf("entrypoint が不正です: %v", cc.Entrypoint)
+				t.Fatalf("entrypoint is invalid: %v", cc.Entrypoint)
 			}
 			if cc.StopSignal != "SIGTERM" {
-				t.Fatalf("stop signal が不正です: %q", cc.StopSignal)
+				t.Fatalf("stop signal is invalid: %q", cc.StopSignal)
 			}
 			// StopTimeout is the second ceiling of stopTimeoutSeconds, the
 			// same as cleanup; the default 30s stays 30. The boundary values
 			// are checked in TestBuildManagedSpec_StopTimeout.
 			if cc.StopTimeout == nil || *cc.StopTimeout != 30 {
-				t.Fatalf("stop timeout が不正です: %v", cc.StopTimeout)
+				t.Fatalf("stop timeout is invalid: %v", cc.StopTimeout)
 			}
 			if cc.Tty || cc.OpenStdin || cc.StdinOnce {
-				t.Fatal("tty/stdin は無効でなければなりません")
+				t.Fatal("tty/stdin must be disabled")
 			}
 
 			// The three JIT env values (dind-runner appends the
@@ -176,110 +176,125 @@ func TestBuildManagedSpec(t *testing.T) {
 			}
 			wantEnv = append(wantEnv, tc.timeoutEnv...)
 			if !slices.Equal(cc.Env, wantEnv) {
-				t.Fatalf("JIT env が不正です: %v", cc.Env)
+				t.Fatalf("JIT env is invalid: %v", cc.Env)
 			}
 
 			// Six labels
 			if err := model.ValidateLabels(spec.labels, input.Identity); err != nil {
-				t.Fatalf("label が managed の contract を満たしません: %v", err)
+				t.Fatalf("label does not satisfy the managed contract: %v", err)
 			}
 			if len(cc.Labels) != 6 {
-				t.Fatalf("container label が 6 個ではありません: %v", cc.Labels)
+				t.Fatalf("container label count is not 6: %v", cc.Labels)
 			}
 			for _, k := range model.RequiredLabelKeys() {
 				if cc.Labels[k] == "" {
-					t.Fatalf("必須 label %q がありません: %v", k, cc.Labels)
+					t.Fatalf("required label %q is missing: %v", k, cc.Labels)
 				}
 			}
 
 			// Common HostConfig security fields
 			hc := spec.create.HostConfig
 			if hc.Runtime != tc.runtime {
-				t.Fatalf("runtime が不正です: %q", hc.Runtime)
+				t.Fatalf("runtime is invalid: %q", hc.Runtime)
 			}
 			if hc.Privileged {
-				t.Fatal("privileged は false でなければなりません")
+				t.Fatal("privileged must be false")
 			}
 			if hc.ReadonlyRootfs {
-				t.Fatal("read-only rootfs は false でなければなりません")
+				t.Fatal("read-only rootfs must be false")
 			}
 			if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" {
-				t.Fatalf("cap drop が不正です: %v", hc.CapDrop)
+				t.Fatalf("cap drop is invalid: %v", hc.CapDrop)
 			}
 			if !slices.Equal(hc.CapAdd, tc.capAdd) {
-				t.Fatalf("cap add が不正です: %v", hc.CapAdd)
+				t.Fatalf("cap add is invalid: %v", hc.CapAdd)
 			}
 			if hc.NetworkMode != "bridge" {
-				t.Fatalf("network mode が不正です: %q", hc.NetworkMode)
+				t.Fatalf("network mode is invalid: %q", hc.NetworkMode)
 			}
 			if hc.IpcMode != container.IPCModePrivate || hc.CgroupnsMode != container.CgroupnsModePrivate {
-				t.Fatalf("namespace isolation が不正です: ipc=%q cgroupns=%q", hc.IpcMode, hc.CgroupnsMode)
+				t.Fatalf("namespace isolation is invalid: ipc=%q cgroupns=%q", hc.IpcMode, hc.CgroupnsMode)
 			}
 			if hc.PidMode != "" || hc.UTSMode != "" || hc.UsernsMode != "" {
-				t.Fatalf("host namespace が設定されています: pid=%q uts=%q userns=%q", hc.PidMode, hc.UTSMode, hc.UsernsMode)
+				t.Fatalf("host namespace is configured: pid=%q uts=%q userns=%q", hc.PidMode, hc.UTSMode, hc.UsernsMode)
 			}
 			if hc.AutoRemove {
-				t.Fatal("auto remove は false でなければなりません")
+				t.Fatal("auto remove must be false")
 			}
 			if hc.RestartPolicy.Name != container.RestartPolicyDisabled {
-				t.Fatalf("restart policy が不正です: %q", hc.RestartPolicy.Name)
+				t.Fatalf("restart policy is invalid: %q", hc.RestartPolicy.Name)
 			}
 			if hc.Init == nil || !*hc.Init {
-				t.Fatal("init は有効でなければなりません")
+				t.Fatal("init must be enabled")
 			}
 			if len(hc.Binds) != 0 || len(hc.VolumesFrom) != 0 || len(hc.Devices) != 0 || len(hc.DeviceRequests) != 0 {
-				t.Fatalf("禁止 mount/device が設定されています: binds=%v devices=%v", hc.Binds, hc.Devices)
+				t.Fatalf("prohibited mount/device is configured: binds=%v devices=%v", hc.Binds, hc.Devices)
 			}
 			if !slices.Contains(hc.SecurityOpt, "no-new-privileges") {
-				t.Fatalf("no-new-privileges が security option にありません: %v", hc.SecurityOpt)
+				t.Fatalf("no-new-privileges is missing from security options: %v", hc.SecurityOpt)
 			}
 
 			// Resources
 			res := &hc.Resources
 			if res.NanoCPUs != int64(cfg.Runner.CPU) {
-				t.Fatalf("NanoCPUs が不正です: %d", res.NanoCPUs)
+				t.Fatalf("NanoCPUs is invalid: %d", res.NanoCPUs)
 			}
 			if res.Memory != int64(cfg.Runner.Memory) || res.MemorySwap != int64(cfg.Runner.MemorySwap) {
-				t.Fatalf("memory が不正です: memory=%d swap=%d", res.Memory, res.MemorySwap)
+				t.Fatalf("memory is invalid: memory=%d swap=%d", res.Memory, res.MemorySwap)
 			}
 			if res.PidsLimit == nil || *res.PidsLimit != cfg.Runner.PidsLimit {
-				t.Fatalf("pids limit が不正です: %v", res.PidsLimit)
+				t.Fatalf("pids limit is invalid: %v", res.PidsLimit)
 			}
 			if len(res.Ulimits) != 1 || res.Ulimits[0].Name != "nofile" || res.Ulimits[0].Soft != 1024 || res.Ulimits[0].Hard != 2048 {
-				t.Fatalf("ulimit が不正です: %+v", res.Ulimits)
+				t.Fatalf("ulimit is invalid: %+v", res.Ulimits)
 			}
 
 			// tmpfs / DNS / extraHosts
 			if got := hc.Tmpfs["/tmp"]; got != "size=64m,ro" {
-				t.Fatalf("tmpfs が不正です: %v", hc.Tmpfs)
+				t.Fatalf("tmpfs is invalid: %v", hc.Tmpfs)
 			}
 			if len(hc.DNS) != 1 || hc.DNS[0] != netip.MustParseAddr("1.1.1.1") {
-				t.Fatalf("DNS が不正です: %v", hc.DNS)
+				t.Fatalf("DNS is invalid: %v", hc.DNS)
 			}
 			if len(hc.ExtraHosts) != 1 || hc.ExtraHosts[0] != "db:127.0.0.1" {
-				t.Fatalf("extraHosts が不正です: %v", hc.ExtraHosts)
+				t.Fatalf("extraHosts is invalid: %v", hc.ExtraHosts)
 			}
 
 			// Profile delta: the fixed dind /var/lib/docker tmpfs (mode
 			// 0700, storageSize). standard has no mounts.
 			if tc.dindTmp {
 				if len(hc.Mounts) != 1 {
-					t.Fatalf("dind の mount は 1 個でなければなりません: %v", hc.Mounts)
+					t.Fatalf("dind mount count must be 1: %v", hc.Mounts)
 				}
 				m := hc.Mounts[0]
 				if m.Type != mount.TypeTmpfs || m.Target != "/var/lib/docker" || m.Source != "" {
-					t.Fatalf("dind tmpfs mount が不正です: %+v", m)
+					t.Fatalf("dind tmpfs mount is invalid: %+v", m)
 				}
 				if m.TmpfsOptions == nil || m.TmpfsOptions.SizeBytes != int64(cfg.DindRunner.StorageSize) {
-					t.Fatalf("dind tmpfs の size が不正です: %+v", m.TmpfsOptions)
+					t.Fatalf("dind tmpfs size is invalid: %+v", m.TmpfsOptions)
 				}
 				if m.TmpfsOptions.Mode != 0o700 {
-					t.Fatalf("dind tmpfs の mode は 0700 でなければなりません: %o", m.TmpfsOptions.Mode)
+					t.Fatalf("dind tmpfs mode must be 0700: %o", m.TmpfsOptions.Mode)
 				}
 			} else if len(hc.Mounts) != 0 {
-				t.Fatalf("standard に mount があります: %v", hc.Mounts)
+				t.Fatalf("standard has mounts: %v", hc.Mounts)
 			}
 		})
+	}
+}
+
+// TestBuildManagedSpec_UnlimitedResources maps zero resource values to Docker
+// unlimited values, including a nil process limit.
+func TestBuildManagedSpec_UnlimitedResources(t *testing.T) {
+	cfg := testConfig(t, config.ProfileStandard, "runsc")
+	cfg.Runner.CPU = 0
+	cfg.Runner.Memory = 0
+	cfg.Runner.MemorySwap = 0
+	cfg.Runner.PidsLimit = 0
+	spec := mustBuild(t, cfg)
+	res := spec.create.HostConfig.Resources
+	if res.NanoCPUs != 0 || res.Memory != 0 || res.MemorySwap != 0 || res.PidsLimit != nil {
+		t.Fatalf("unlimited resource mapping is incorrect: cpu=%d memory=%d swap=%d pids=%v", res.NanoCPUs, res.Memory, res.MemorySwap, res.PidsLimit)
 	}
 }
 
@@ -301,9 +316,9 @@ func TestBuildManagedSpec_Prohibited(t *testing.T) {
 		{name: "CapDrop は ALL 以外を拒否", mutate: func(c *config.Config) { c.Runner.CapDrop = []string{"SYS_ADMIN"} }, wantErr: "capDrop must be exactly"},
 		{name: "read-only rootfs を拒否", mutate: func(c *config.Config) { c.Runner.ReadOnlyRootfs = true }, wantErr: "readOnlyRootfs must be false"},
 		{name: "no-new-privileges false を拒否", mutate: func(c *config.Config) { c.Runner.NoNewPrivileges = false }, wantErr: "noNewPrivileges must be true"},
-		{name: "cpu 欠落を拒否", mutate: func(c *config.Config) { c.Runner.CPU = 0 }, wantErr: "runner.cpu must be positive"},
-		{name: "memory 欠落を拒否", mutate: func(c *config.Config) { c.Runner.Memory = 0 }, wantErr: "runner.memory must be positive"},
-		{name: "pidsLimit 欠落を拒否", mutate: func(c *config.Config) { c.Runner.PidsLimit = 0 }, wantErr: "runner.pidsLimit must be positive"},
+		{name: "negative cpu を拒否", mutate: func(c *config.Config) { c.Runner.CPU = -1 }, wantErr: "runner.cpu must be non-negative"},
+		{name: "negative memory を拒否", mutate: func(c *config.Config) { c.Runner.Memory = -1 }, wantErr: "runner.memory must be non-negative"},
+		{name: "negative pidsLimit を拒否", mutate: func(c *config.Config) { c.Runner.PidsLimit = -1 }, wantErr: "runner.pidsLimit must be non-negative"},
 		{name: "memorySwap < memory を拒否", mutate: func(c *config.Config) { c.Runner.MemorySwap = c.Runner.Memory - 1 }, wantErr: "memorySwap must be >= runner.memory"},
 		{name: "host network を拒否", mutate: func(c *config.Config) { c.Runner.Network = "host" }, wantErr: `network mode "host"`},
 		{name: "none network を拒否", mutate: func(c *config.Config) { c.Runner.Network = "none" }, wantErr: `network mode "none"`},
@@ -342,7 +357,7 @@ func TestBuildManagedSpec_Prohibited(t *testing.T) {
 			}
 			_, err := BuildManagedSpec(input)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("BuildManagedSpec が拒否しませんでした: err=%v", err)
+				t.Fatalf("BuildManagedSpec did not reject: err=%v", err)
 			}
 		})
 	}
@@ -357,7 +372,7 @@ func TestBuildManagedSpec_SecurityOpt(t *testing.T) {
 	dir := t.TempDir()
 	seccomp := filepath.Join(dir, "seccomp.json")
 	if err := os.WriteFile(seccomp, []byte("{\n  \"defaultAction\": \"SCMP_ACT_ERRNO\"\n}\n"), 0o600); err != nil {
-		t.Fatalf("seccomp file の作成に失敗しました: %v", err)
+		t.Fatalf("seccomp failed to create file: %v", err)
 	}
 
 	t.Run("seccomp は compact 化して渡す", func(t *testing.T) {
@@ -366,25 +381,25 @@ func TestBuildManagedSpec_SecurityOpt(t *testing.T) {
 		spec := mustBuild(t, cfg)
 		want := `seccomp={"defaultAction":"SCMP_ACT_ERRNO"}`
 		if !slices.Contains(spec.create.HostConfig.SecurityOpt, want) {
-			t.Fatalf("seccomp option %q が見つかりません: %v", want, spec.create.HostConfig.SecurityOpt)
+			t.Fatalf("seccomp option %q is missing: %v", want, spec.create.HostConfig.SecurityOpt)
 		}
 	})
 	t.Run("seccomp invalid JSON を拒否", func(t *testing.T) {
 		bad := filepath.Join(dir, "bad.json")
 		if err := os.WriteFile(bad, []byte("{not json"), 0o600); err != nil {
-			t.Fatalf("seccomp file の作成に失敗しました: %v", err)
+			t.Fatalf("seccomp failed to create file: %v", err)
 		}
 		cfg := testConfig(t, config.ProfileStandard, "runsc")
 		cfg.Runner.Seccomp = bad
 		if _, err := BuildManagedSpec(testInput(cfg)); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
-			t.Fatalf("invalid JSON を拒否しませんでした: err=%v", err)
+			t.Fatalf("invalid JSON was not rejected: err=%v", err)
 		}
 	})
 	t.Run("seccomp file 不存在を拒否", func(t *testing.T) {
 		cfg := testConfig(t, config.ProfileStandard, "runsc")
 		cfg.Runner.Seccomp = filepath.Join(dir, "missing.json")
 		if _, err := BuildManagedSpec(testInput(cfg)); err == nil || !strings.Contains(err.Error(), "read seccomp profile") {
-			t.Fatalf("file 不存在を拒否しませんでした: err=%v", err)
+			t.Fatalf("missing file was not rejected: err=%v", err)
 		}
 	})
 	t.Run("apparmor 指定で必須値を維持", func(t *testing.T) {
@@ -393,10 +408,10 @@ func TestBuildManagedSpec_SecurityOpt(t *testing.T) {
 		spec := mustBuild(t, cfg)
 		opt := spec.create.HostConfig.SecurityOpt
 		if !slices.Contains(opt, "no-new-privileges") {
-			t.Fatalf("no-new-privileges が失われています: %v", opt)
+			t.Fatalf("no-new-privileges is missing: %v", opt)
 		}
 		if !slices.Contains(opt, "apparmor=ghadc-runner") {
-			t.Fatalf("apparmor option が SecurityOpt にありません: %v", opt)
+			t.Fatalf("apparmor option is missing from SecurityOpt: %v", opt)
 		}
 	})
 	t.Run("seccomp と apparmor の同時指定", func(t *testing.T) {
@@ -411,7 +426,7 @@ func TestBuildManagedSpec_SecurityOpt(t *testing.T) {
 			"apparmor=ghadc-runner",
 		} {
 			if !slices.Contains(opt, want) {
-				t.Fatalf("security option %q がありません: %v", want, opt)
+				t.Fatalf("security option %q is missing: %v", want, opt)
 			}
 		}
 	})
@@ -441,7 +456,7 @@ func TestBuildManagedSpec_StopTimeout(t *testing.T) {
 			spec := mustBuild(t, cfg)
 			cc := spec.create.Config
 			if cc.StopTimeout == nil || *cc.StopTimeout != tc.want {
-				t.Fatalf("StopTimeout の変換結果が不正です: 入力=%s、実測値=%v、期待値=%d", tc.in, cc.StopTimeout, tc.want)
+				t.Fatalf("StopTimeout conversion is invalid: input=%s, actual=%v, expected=%d", tc.in, cc.StopTimeout, tc.want)
 			}
 		})
 	}
@@ -477,15 +492,15 @@ func TestParseTmpfsSpec(t *testing.T) {
 			dest, options, err := parseTmpfsSpec(tc.spec)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("parseTmpfsSpec が拒否しませんでした: err=%v", err)
+					t.Fatalf("parseTmpfsSpec did not reject: err=%v", err)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseTmpfsSpec が失敗しました: %v", err)
+				t.Fatalf("parseTmpfsSpec failed: %v", err)
 			}
 			if dest != tc.dest || options != tc.options {
-				t.Fatalf("変換結果が不正です: dest=%q options=%q", dest, options)
+				t.Fatalf("conversion result is invalid: dest=%q options=%q", dest, options)
 			}
 		})
 	}
@@ -510,30 +525,30 @@ func TestBuildManagedSpec_DefensiveCopy(t *testing.T) {
 	cfg.Runner.Image = "changed:tag"
 
 	if got := spec.create.HostConfig.CapDrop[0]; got != "ALL" {
-		t.Fatalf("CapDrop が入力の変更に追従しました: %q", got)
+		t.Fatalf("CapDrop changed when the input changed: %q", got)
 	}
 	if len(spec.create.HostConfig.CapAdd) != 0 {
-		t.Fatalf("CapAdd が入力の変更に追従しました: %v", spec.create.HostConfig.CapAdd)
+		t.Fatalf("CapAdd changed when the input changed: %v", spec.create.HostConfig.CapAdd)
 	}
 	if got := spec.create.HostConfig.DNS[0]; got != netip.MustParseAddr("1.1.1.1") {
-		t.Fatalf("DNS が入力の変更に追従しました: %v", got)
+		t.Fatalf("DNS changed when the input changed: %v", got)
 	}
 	if got := spec.create.HostConfig.ExtraHosts[0]; got != "db:127.0.0.1" {
-		t.Fatalf("ExtraHosts が入力の変更に追従しました: %q", got)
+		t.Fatalf("ExtraHosts changed when the input changed: %q", got)
 	}
 	if got := spec.create.HostConfig.Resources.Ulimits[0].Soft; got != 1024 {
-		t.Fatalf("ulimit が入力の変更に追従しました: %d", got)
+		t.Fatalf("ulimit changed when the input changed: %d", got)
 	}
 	if got := spec.create.HostConfig.Tmpfs["/tmp"]; got != "size=64m,ro" {
-		t.Fatalf("tmpfs が入力の変更に追従しました: %v", spec.create.HostConfig.Tmpfs)
+		t.Fatalf("tmpfs changed when the input changed: %v", spec.create.HostConfig.Tmpfs)
 	}
 	if spec.create.Config.Image != testImage {
-		t.Fatalf("image が入力の変更に追従しました: %q", spec.create.Config.Image)
+		t.Fatalf("image changed when the input changed: %q", spec.create.Config.Image)
 	}
 
 	// The label maps inside the spec are not shared with each other either
 	spec.labels[model.ManagedLabelKey] = "tampered"
 	if got := spec.create.Config.Labels[model.ManagedLabelKey]; got != model.ManagedLabelValue {
-		t.Fatalf("container label が spec.labels と共有されています: %q", got)
+		t.Fatalf("container label shares spec.labels: %q", got)
 	}
 }

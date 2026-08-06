@@ -63,7 +63,7 @@ func runValidate(t *testing.T, name string, mutate func(*Config), wantErr string
 	errs := c.validate()
 	if wantErr == "" {
 		if len(errs) != 0 {
-			t.Fatalf("%s: 期待しない error が返りました: %v", name, errs)
+			t.Fatalf("%s: unexpected error returned: %v", name, errs)
 		}
 		return
 	}
@@ -72,7 +72,7 @@ func runValidate(t *testing.T, name string, mutate func(*Config), wantErr string
 			return
 		}
 	}
-	t.Fatalf("%s: 期待 error %q がありません: %v", name, wantErr, errs)
+	t.Fatalf("%s: expected error %q was not returned: %v", name, wantErr, errs)
 }
 
 // TestValidate_ScopeOwnerRepository verifies the scope enum values and the
@@ -197,11 +197,12 @@ func TestValidate_NonPositiveResources(t *testing.T) {
 		mutate  func(*Config)
 		wantErr string
 	}{
-		{name: "zero cpu is rejected", mutate: func(c *Config) { c.Runner.CPU = 0 }, wantErr: "runner.cpu: required"},
-		{name: "zero memory is rejected", mutate: func(c *Config) { c.Runner.Memory = 0 }, wantErr: "runner.memory: required"},
-		{name: "zero memorySwap is rejected", mutate: func(c *Config) { c.Runner.MemorySwap = 0 }, wantErr: "runner.memorySwap: required"},
+		{name: "negative cpu is rejected", mutate: func(c *Config) { c.Runner.CPU = -1 }, wantErr: "runner.cpu: must be >= 0"},
+		{name: "negative memory is rejected", mutate: func(c *Config) { c.Runner.Memory = -1 }, wantErr: "runner.memory: must be >= 0"},
+		{name: "negative memorySwap is rejected", mutate: func(c *Config) { c.Runner.MemorySwap = -1 }, wantErr: "runner.memorySwap: must be >= 0"},
 		{name: "swap below memory is rejected", mutate: func(c *Config) { c.Runner.MemorySwap = Memory(1 << 30) }, wantErr: "runner.memorySwap: must be >= runner.memory"},
-		{name: "zero pidsLimit is rejected", mutate: func(c *Config) { c.Runner.PidsLimit = 0 }, wantErr: "runner.pidsLimit: required"},
+		{name: "negative pidsLimit is rejected", mutate: func(c *Config) { c.Runner.PidsLimit = -1 }, wantErr: "runner.pidsLimit: must be >= 0"},
+		{name: "swap cannot be limited with unlimited memory", mutate: func(c *Config) { c.Runner.Memory = 0; c.Runner.MemorySwap = Memory(1 << 30) }, wantErr: "runner.memorySwap: cannot be limited"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -243,12 +244,12 @@ func TestValidate_DindCapAddExactSet(t *testing.T) {
 	// Fix the allowed set size at 17 with no duplicates.
 	dind := DindCapabilities()
 	if len(dind) != 17 {
-		t.Fatalf("DindCapabilities の個数が不正です: 期待値 %d、実測値 %d", 17, len(dind))
+		t.Fatalf("DindCapabilities count is invalid: expected %d、actual %d", 17, len(dind))
 	}
 	seen := make(map[string]bool, len(dind))
 	for _, cap := range dind {
 		if seen[cap] {
-			t.Fatalf("DindCapabilities に重複があります: %q", cap)
+			t.Fatalf("DindCapabilities contains duplicates: %q", cap)
 		}
 		seen[cap] = true
 	}
@@ -257,7 +258,7 @@ func TestValidate_DindCapAddExactSet(t *testing.T) {
 	// copy).
 	dind[0] = "CORRUPTED"
 	if got := DindCapabilities()[0]; got != "AUDIT_WRITE" {
-		t.Fatalf("DindCapabilities の固定集合が変更されました: %q", got)
+		t.Fatalf("DindCapabilities fixed set changed: %q", got)
 	}
 
 	// Each single-element subset and the full set are accepted.

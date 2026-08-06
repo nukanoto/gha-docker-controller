@@ -234,7 +234,10 @@ func BuildManagedSpec(input ManagedSpecInput) (ManagedSpec, error) {
 	// the cleanup Docker stop API. Sub-second values never round down to 0;
 	// a positive setting is always at least 1 second.
 	stopTimeout := stopTimeoutSeconds(time.Duration(cfg.Runner.StopTimeout))
-	pidsLimit := cfg.Runner.PidsLimit
+	var pidsLimit *int64 = &cfg.Runner.PidsLimit
+	if *pidsLimit <= 0 {
+		pidsLimit = nil
+	}
 	initEnabled := true
 
 	spec := ManagedSpec{
@@ -270,11 +273,13 @@ func BuildManagedSpec(input ManagedSpecInput) (ManagedSpec, error) {
 				Runtime:        profile.runtime,
 				SecurityOpt:    securityOpt,
 				Tmpfs:          tmpfs,
+				// Docker interprets zero CPU, memory and swap as unlimited. A nil
+				// PidsLimit leaves the process count unlimited.
 				Resources: container.Resources{
 					NanoCPUs:   int64(cfg.Runner.CPU),
 					Memory:     int64(cfg.Runner.Memory),
 					MemorySwap: int64(cfg.Runner.MemorySwap),
-					PidsLimit:  &pidsLimit,
+					PidsLimit:  pidsLimit,
 					Ulimits:    buildUlimits(cfg.Runner.Ulimit),
 				},
 				Mounts: mounts,

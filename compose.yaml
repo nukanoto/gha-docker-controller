@@ -1,0 +1,15 @@
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gha-docker-controller:local
+    restart: on-failure
+    stop_grace_period: 8m
+    environment:
+      # Pass the PAT only when PAT authentication is used.
+      - GITHUB_TOKEN
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config.yaml:/etc/gha-docker-controller/config.yaml:ro
+      - ./gha-github-app.pem:/etc/gha-docker-controller/github-app.pem

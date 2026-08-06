@@ -133,14 +133,13 @@ type RunnerConfig struct {
 	Image string
 	// Profile is ProfileStandard or ProfileDindRunner.
 	Profile string
-	// CPU is the CPU limit in NanoCPUs. Mandatory.
+	// CPU is the CPU limit in NanoCPUs. Zero means unlimited.
 	CPU NanoCPUs
-	// Memory is the memory limit in bytes. Mandatory.
+	// Memory is the memory limit in bytes. Zero means unlimited.
 	Memory Memory
-	// MemorySwap is the memory+swap limit in bytes. Mandatory and must be >=
-	// Memory.
+	// MemorySwap is the memory+swap limit in bytes. Zero means unlimited.
 	MemorySwap Memory
-	// PidsLimit is the process count limit. Mandatory.
+	// PidsLimit is the process count limit. Zero means unlimited.
 	PidsLimit int64
 	// ProvisioningTimeout is the deadline for provisioning.
 	ProvisioningTimeout Duration

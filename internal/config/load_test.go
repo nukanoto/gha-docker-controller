@@ -95,10 +95,10 @@ func mustWriteSecret(t *testing.T, name string, content string, perm os.FileMode
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("secret file の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create secret file: %v", err)
 	}
 	if err := os.Chmod(path, perm); err != nil {
-		t.Fatalf("secret file の permission 設定に失敗しました: %v", err)
+		t.Fatalf("failed to set secret file permissions: %v", err)
 	}
 	return path
 }
@@ -108,7 +108,7 @@ func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("config file の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create config file: %v", err)
 	}
 	return path
 }
@@ -126,7 +126,7 @@ func loadDoc(t *testing.T, doc string) (*Config, []Warning) {
 	t.Helper()
 	c, warnings, err := Load(writeConfig(t, doc))
 	if err != nil {
-		t.Fatalf("Load が失敗しました: %v", err)
+		t.Fatalf("Load failed: %v", err)
 	}
 	return c, warnings
 }
@@ -137,12 +137,12 @@ func checkErr(t *testing.T, name, wantErr string, err error) {
 	t.Helper()
 	if wantErr == "" {
 		if err != nil {
-			t.Fatalf("%s: 期待しない error が返りました: %v", name, err)
+			t.Fatalf("%s: unexpected error returned: %v", name, err)
 		}
 		return
 	}
 	if err == nil || !strings.Contains(err.Error(), wantErr) {
-		t.Fatalf("%s: 期待 error %q がありません: err=%v", name, wantErr, err)
+		t.Fatalf("%s: expected error %q was not returned: err=%v", name, wantErr, err)
 	}
 }
 
@@ -152,41 +152,41 @@ func checkErr(t *testing.T, name, wantErr string, err error) {
 func TestLoad_ConfigExampleFile(t *testing.T) {
 	data, err := os.ReadFile("../../config.example.yaml")
 	if err != nil {
-		t.Fatalf("config.example.yaml の読み込みに失敗しました: %v", err)
+		t.Fatalf("failed to read config.example.yaml: %v", err)
 	}
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
 	replaced := strings.ReplaceAll(string(data), "/etc/gha-docker-controller/github-app.pem", keyPath)
 	c, warnings, err := Load(writeConfig(t, replaced))
 	if err != nil {
-		t.Fatalf("config.example.yaml の Load が失敗しました: %v", err)
+		t.Fatalf("failed to load config.example.yaml: %v", err)
 	}
 	if len(warnings) != 0 {
-		t.Fatalf("example に warning が返りました: %+v", warnings)
+		t.Fatalf("warning returned for example: %+v", warnings)
 	}
 	// Verify the normalization of the fully explicit config with a few
 	// representative fields.
 	if c.GitHub.URL != "https://github.com" || c.GitHub.Owner != "your-organization" || c.GitHub.App.AppID != 123456 || !bytes.Equal(c.GitHub.App.PrivateKey, []byte(keyPEM)) {
-		t.Fatalf("github の正規化結果が不正です: %+v", c.GitHub)
+		t.Fatalf("GitHub normalization result is invalid: %+v", c.GitHub)
 	}
 	if c.ScaleSet != (ScaleSetConfig{Name: "production", RunnerGroup: "default", MinRunners: 0, MaxRunners: 4}) {
-		t.Fatalf("scaleSet の正規化結果が不正です: %+v", c.ScaleSet)
+		t.Fatalf("scaleSet normalization result is invalid: %+v", c.ScaleSet)
 	}
 	if c.Docker != (DockerConfig{Host: "unix:///var/run/docker.sock", Runtime: "runsc", Network: "bridge", PullPolicy: PullPolicyIfNotPresent}) {
-		t.Fatalf("docker の正規化結果が不正です: %+v", c.Docker)
+		t.Fatalf("Docker normalization result is invalid: %+v", c.Docker)
 	}
 	if c.Runner.Image != "ghcr.io/actions/actions-runner@"+sha256Digest || c.Runner.Profile != ProfileStandard || c.Runner.CPU != NanoCPUs(2000000000) {
-		t.Fatalf("runner の正規化結果が不正です: image=%q profile=%q cpu=%d", c.Runner.Image, c.Runner.Profile, c.Runner.CPU)
+		t.Fatalf("runner normalization result is invalid: image=%q profile=%q cpu=%d", c.Runner.Image, c.Runner.Profile, c.Runner.CPU)
 	}
 	if !reflect.DeepEqual(c.Runner.CapDrop, []string{"ALL"}) || !c.Runner.NoNewPrivileges {
-		t.Fatalf("runner の security 正規化結果が不正です: capDrop=%v nnp=%v", c.Runner.CapDrop, c.Runner.NoNewPrivileges)
+		t.Fatalf("runner security normalization result is invalid: capDrop=%v nnp=%v", c.Runner.CapDrop, c.Runner.NoNewPrivileges)
 	}
 	if c.Shutdown.BusyPolicy != ShutdownPolicyLeave || c.Log.Format != LogFormatJSON || c.Health.Listen != "127.0.0.1:8080" {
-		t.Fatalf("health/shutdown/log の正規化結果が不正です: %+v %+v %+v", c.Health, c.Shutdown, c.Log)
+		t.Fatalf("health/shutdown/log normalization result is invalid: %+v %+v %+v", c.Health, c.Shutdown, c.Log)
 	}
 	// The trailing "/" of the url is normalized and the base URL is composed
 	// of the owner only.
 	if got := c.GitHubConfigURL(); got != "https://github.com/your-organization" {
-		t.Fatalf("GitHubConfigURL が不正です: 期待値 %q、実測値 %q", "https://github.com/your-organization", got)
+		t.Fatalf("GitHubConfigURL is invalid: expected %q、actual %q", "https://github.com/your-organization", got)
 	}
 }
 
@@ -196,13 +196,13 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
 	c, warnings := loadDoc(t, strings.ReplaceAll(minimalConfigYAML, "__KEY__", keyPath))
 	if len(warnings) != 0 {
-		t.Fatalf("期待しない warning が返りました: %+v", warnings)
+		t.Fatalf("unexpected warning returned: %+v", warnings)
 	}
 	if c.GitHub.URL != DefaultGitHubURL || c.ScaleSet.RunnerGroup != DefaultRunnerGroup || c.ScaleSet.MinRunners != 0 {
-		t.Fatalf("既定値が適用されていません: url=%q group=%q min=%d", c.GitHub.URL, c.ScaleSet.RunnerGroup, c.ScaleSet.MinRunners)
+		t.Fatalf("defaults were not applied: url=%q group=%q min=%d", c.GitHub.URL, c.ScaleSet.RunnerGroup, c.ScaleSet.MinRunners)
 	}
 	if c.Runner.Profile != DefaultProfile || c.Runner.ProvisioningTimeout != Duration(DefaultProvisioningTimeout) || c.Runner.StopTimeout != Duration(DefaultStopTimeout) || c.Runner.Network != DefaultNetwork {
-		t.Fatalf("runner の既定値が適用されていません: profile=%q provisioning=%v stop=%v network=%q", c.Runner.Profile, c.Runner.ProvisioningTimeout, c.Runner.StopTimeout, c.Runner.Network)
+		t.Fatalf("runner defaults were not applied: profile=%q provisioning=%v stop=%v network=%q", c.Runner.Profile, c.Runner.ProvisioningTimeout, c.Runner.StopTimeout, c.Runner.Network)
 	}
 	// Struct-level defaults are verified in a table.
 	tests := []struct {
@@ -220,7 +220,7 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 	}
 	for _, tt := range tests {
 		if !reflect.DeepEqual(tt.got, tt.want) {
-			t.Fatalf("%s の既定値が不正です: got=%+v want=%+v", tt.name, tt.got, tt.want)
+			t.Fatalf("%s default is invalid: got=%+v want=%+v", tt.name, tt.got, tt.want)
 		}
 	}
 }
@@ -233,21 +233,21 @@ func TestLoad_RepoScopeWithPAT(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", token)
 	c, warnings := loadDoc(t, patRepoYAML)
 	if len(warnings) != 0 {
-		t.Fatalf("期待しない warning が返りました: %+v", warnings)
+		t.Fatalf("unexpected warning returned: %+v", warnings)
 	}
 	if c.GitHub.Token != token {
 		// Never print the PAT value on failure (avoids re-exposing the
 		// secret).
-		t.Fatal("PAT の読み込み結果が不正です (値は秘密のため出力しません)")
+		t.Fatal("PAT load result is invalid (value is not printed because it is secret)")
 	}
 	if c.GitHub.App != nil {
-		t.Fatal("PAT 設定時に App が構築されました")
+		t.Fatal("App was built when PAT was configured")
 	}
 	if c.GitHub.URL != "https://github.com" {
-		t.Fatalf("url の正規化が不正です: 期待値 %q、実測値 %q", "https://github.com", c.GitHub.URL)
+		t.Fatalf("URL normalization is invalid: expected %q、actual %q", "https://github.com", c.GitHub.URL)
 	}
 	if got := c.GitHubConfigURL(); got != "https://github.com/my-org/my-repo" {
-		t.Fatalf("GitHubConfigURL が不正です: 期待値 %q、実測値 %q", "https://github.com/my-org/my-repo", got)
+		t.Fatalf("GitHubConfigURL is invalid: expected %q、actual %q", "https://github.com/my-org/my-repo", got)
 	}
 }
 
@@ -260,14 +260,14 @@ func TestLoad_RunnerNetworkInheritanceAndMismatch(t *testing.T) {
 	// user-net.
 	doc := strings.Replace(base, "  network: bridge\n", "  network: user-net\n", 1)
 	if c, _ := loadDoc(t, doc); c.Runner.Network != "user-net" || c.Docker.Network != "user-net" {
-		t.Fatalf("runner.network の継承が不正です")
+		t.Fatalf("runner.network inheritance is invalid")
 	}
 
 	// Explicit match passes.
 	doc = strings.Replace(base, "  cpu: \"1\"\n", "  network: user-net\n  cpu: \"1\"\n", 1)
 	doc = strings.Replace(doc, "  network: bridge\n", "  network: user-net\n", 1)
 	if c, _ := loadDoc(t, doc); c.Runner.Network != "user-net" {
-		t.Fatalf("明示した runner.network が反映されていません: %q", c.Runner.Network)
+		t.Fatalf("explicit runner.network was not applied: %q", c.Runner.Network)
 	}
 
 	// Mismatch and host are rejected (the detailed rules live in
@@ -292,16 +292,16 @@ func TestLoad_DindProfileDefaults(t *testing.T) {
 	doc := strings.Replace(base, imageLine, dindImage+"  profile: dind-runner\n", 1)
 	c, _ := loadDoc(t, doc)
 	if c.Runner.Profile != ProfileDindRunner {
-		t.Fatalf("dind の profile が反映されていません: %+v", c.DindRunner)
+		t.Fatalf("dind profile was not applied: %+v", c.DindRunner)
 	}
 	if !reflect.DeepEqual(c.Runner.CapAdd, DindCapabilities()) {
-		t.Fatalf("dind の CapAdd 既定が 17 個の集合と一致しません: %v", c.Runner.CapAdd)
+		t.Fatalf("dind default CapAdd set does not contain 17 capabilities: %v", c.Runner.CapAdd)
 	}
 
 	// A subset CapAdd is accepted and reflected as specified.
 	doc = strings.Replace(base, imageLine, dindImage+"  profile: dind-runner\n  capAdd: [\"CHOWN\"]\n", 1)
 	if c, _ := loadDoc(t, doc); !reflect.DeepEqual(c.Runner.CapAdd, []string{"CHOWN"}) {
-		t.Fatalf("CapAdd の部分集合が反映されていません: %v", c.Runner.CapAdd)
+		t.Fatalf("CapAdd subset was not applied: %v", c.Runner.CapAdd)
 	}
 
 	// Rejections: tag image and runtime mismatch.
@@ -327,7 +327,7 @@ func TestLoad_DindProfileDefaults(t *testing.T) {
 	// standard can freely set any registered runtime.
 	doc = strings.Replace(base, "  runtime: runsc\n", "  runtime: runc\n", 1)
 	if c, _ := loadDoc(t, doc); c.Docker.Runtime != "runc" {
-		t.Fatalf("standard の runtime が反映されていません: %q", c.Docker.Runtime)
+		t.Fatalf("standard runtime was not applied: %q", c.Docker.Runtime)
 	}
 }
 
@@ -346,10 +346,6 @@ func TestLoad_RequiredFieldsMissing(t *testing.T) {
 		{name: "missing scaleset name", remove: "  name: prod\n", wantErr: "scaleSet.name"},
 		{name: "missing maxRunners", remove: "  maxRunners: 2\n", wantErr: "scaleSet.maxRunners"},
 		{name: "missing image", remove: "  image: ghcr.io/actions/actions-runner:2.336.0\n", wantErr: "runner.image"},
-		{name: "missing cpu", remove: "  cpu: \"1\"\n", wantErr: "runner.cpu"},
-		{name: "missing memory", remove: "  memory: 1GiB\n", wantErr: "runner.memory"},
-		{name: "missing memorySwap", remove: "  memorySwap: 1GiB\n", wantErr: "runner.memorySwap"},
-		{name: "missing pidsLimit", remove: "  pidsLimit: 128\n", wantErr: "runner.pidsLimit"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -357,7 +353,7 @@ func TestLoad_RequiredFieldsMissing(t *testing.T) {
 			if tt.remove != "" {
 				doc = strings.ReplaceAll(base, tt.remove, "")
 				if doc == base {
-					t.Fatalf("test の remove 文字列 %q が base に一致しません", tt.remove)
+					t.Fatalf("test removal string %q does not match base", tt.remove)
 				}
 			} else {
 				// Remove the app block (from "  app:\n" up to just before
@@ -371,6 +367,26 @@ func TestLoad_RequiredFieldsMissing(t *testing.T) {
 			_, _, err := Load(writeConfig(t, doc))
 			checkErr(t, tt.name, tt.wantErr, err)
 		})
+	}
+}
+
+// TestLoad_UnsetResourcesAreUnlimited accepts omitted resource fields.
+func TestLoad_UnsetResourcesAreUnlimited(t *testing.T) {
+	base := baseWithKey(t)
+	for _, line := range []string{
+		"  cpu: \"1\"\n",
+		"  memory: 1GiB\n",
+		"  memorySwap: 1GiB\n",
+		"  pidsLimit: 128\n",
+	} {
+		base = strings.ReplaceAll(base, line, "")
+	}
+	c, _, err := Load(writeConfig(t, base))
+	if err != nil {
+		t.Fatalf("omitted resources should be accepted as unlimited, but returned an error: %v", err)
+	}
+	if c.Runner.CPU != 0 || c.Runner.Memory != 0 || c.Runner.MemorySwap != 0 || c.Runner.PidsLimit != 0 {
+		t.Fatalf("omitted resources are not unlimited: cpu=%d memory=%d swap=%d pids=%d", c.Runner.CPU, c.Runner.Memory, c.Runner.MemorySwap, c.Runner.PidsLimit)
 	}
 }
 

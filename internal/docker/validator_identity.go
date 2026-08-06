@@ -57,18 +57,24 @@ func validateSpecInput(cfg *config.Config, input ManagedSpecInput) error {
 		return err
 	}
 
-	// Resources are explicitly required and positive.
-	if cfg.Runner.CPU <= 0 {
-		return fmt.Errorf("runner.cpu must be positive (missing resource)")
+	// Zero resources mean unlimited; negative values are invalid.
+	if cfg.Runner.CPU < 0 {
+		return fmt.Errorf("runner.cpu must be non-negative")
 	}
-	if cfg.Runner.Memory <= 0 {
-		return fmt.Errorf("runner.memory must be positive (missing resource)")
+	if cfg.Runner.Memory < 0 {
+		return fmt.Errorf("runner.memory must be non-negative")
 	}
-	if cfg.Runner.MemorySwap < cfg.Runner.Memory {
+	if cfg.Runner.Memory == 0 && cfg.Runner.MemorySwap > 0 {
+		return fmt.Errorf("runner.memorySwap cannot be limited when runner.memory is unlimited")
+	}
+	if cfg.Runner.MemorySwap < 0 {
+		return fmt.Errorf("runner.memorySwap must be non-negative")
+	}
+	if cfg.Runner.Memory > 0 && cfg.Runner.MemorySwap > 0 && cfg.Runner.MemorySwap < cfg.Runner.Memory {
 		return fmt.Errorf("runner.memorySwap must be >= runner.memory")
 	}
-	if cfg.Runner.PidsLimit <= 0 {
-		return fmt.Errorf("runner.pidsLimit must be positive (missing resource)")
+	if cfg.Runner.PidsLimit < 0 {
+		return fmt.Errorf("runner.pidsLimit must be non-negative")
 	}
 	if cfg.DindRunner.StorageSize <= 0 {
 		return fmt.Errorf("dindRunner.storageSize must be positive")

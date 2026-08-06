@@ -71,16 +71,18 @@ func (m Memory) String() string {
 
 // parseMemory converts memory notation to bytes with the same rules as
 // Docker's units.RAMInBytes. k/kb/kib, m/mb/mib, g/gb/gib and t/tb/tib are all
-// powers of 1024. 0, negative values, -1, unlimited, unset and none are
-// rejected as unlimited values.
+// powers of 1024. Zero means unlimited; negative values, -1, unlimited,
+// unset and none are rejected.
 func parseMemory(s string) (int64, error) {
 	s = strings.TrimSpace(strings.ToLower(s))
 	if s == "" {
 		return 0, fmt.Errorf("memory must not be empty")
 	}
 	switch s {
-	case "0", "-1", "unlimited", "unset", "none":
+	case "-1", "unlimited", "unset", "none":
 		return 0, fmt.Errorf("unlimited memory value %q is not allowed", s)
+	case "0":
+		return 0, nil
 	}
 	// RAMInBytes truncates decimals without a unit, so bare bytes are limited
 	// to integers.
@@ -103,7 +105,7 @@ func parseMemory(s string) (int64, error) {
 // NanoCPUs holds a YAML CPU count (for example "2", "2.5") in NanoCPUs.
 type NanoCPUs int64
 
-// UnmarshalYAML accepts only CPU counts greater than 0.
+// UnmarshalYAML accepts non-negative CPU counts. Zero means unlimited.
 func (n *NanoCPUs) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.ScalarNode {
 		return fmt.Errorf("cpu must be a number or a decimal string")
@@ -120,8 +122,8 @@ func (n *NanoCPUs) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return fmt.Errorf("invalid cpu value %q", s)
 	}
-	if f <= 0 {
-		return fmt.Errorf("cpu must be positive: %q", s)
+	if f < 0 {
+		return fmt.Errorf("cpu must be non-negative: %q", s)
 	}
 	if f > 1e6 {
 		return fmt.Errorf("cpu value is too large: %q", s)
