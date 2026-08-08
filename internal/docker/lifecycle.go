@@ -13,7 +13,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	mobyclient "github.com/moby/moby/client"
 
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // ManagedCleanupOptions controls managed-container cleanup.

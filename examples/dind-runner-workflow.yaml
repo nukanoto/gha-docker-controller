@@ -23,7 +23,7 @@
 #   - Set runner.hostConfig.mounts large enough to cover pulling and building
 #     inner images (for example 16GiB). CPU and memory limits are optional;
 #     pidsLimit is the basic resource limit.
-name: gha-docker-controller dind docker example
+name: arc-docker dind docker example
 
 on:
   workflow_dispatch:

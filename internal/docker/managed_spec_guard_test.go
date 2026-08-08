@@ -6,7 +6,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 func TestValidateManagedSpec_AllowsDockerHostConfig(t *testing.T) {

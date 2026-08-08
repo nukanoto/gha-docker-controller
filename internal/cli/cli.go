@@ -9,13 +9,13 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/nukanoto/gha-docker-controller/internal/app"
-	"github.com/nukanoto/gha-docker-controller/internal/buildinfo"
-	"github.com/nukanoto/gha-docker-controller/internal/config"
+	"github.com/nukanoto/arc-docker/internal/app"
+	"github.com/nukanoto/arc-docker/internal/buildinfo"
+	"github.com/nukanoto/arc-docker/internal/config"
 )
 
 // DefaultConfigPath is used when --config is omitted.
-const DefaultConfigPath = "/etc/gha-docker-controller/config.yaml"
+const DefaultConfigPath = "/etc/arc-docker/config.yaml"
 
 // Exit codes are part of the systemd and monitoring contract.
 const (
@@ -131,7 +131,7 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 	if code, ok := parseArgs(fs, args); !ok {
 		return code
 	}
-	fmt.Fprintf(stdout, "gha-docker-controller %s\n", buildinfo.Version)
+	fmt.Fprintf(stdout, "arc-docker %s\n", buildinfo.Version)
 	fmt.Fprintf(stdout, "commit: %s\n", buildinfo.Commit)
 	fmt.Fprintf(stdout, "build date: %s\n", buildinfo.Date)
 	fmt.Fprintf(stdout, "go version: %s\n", buildinfo.GoVersion())
@@ -160,23 +160,23 @@ func parseArgs(fs *flag.FlagSet, args []string) (code int, ok bool) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintf(w, `Usage: gha-docker-controller <command> [options]
+	fmt.Fprintf(w, `Usage: arc-docker <command> [options]
 
 Commands:
   serve     デーモンを起動し、設定された Scale Set の runner を需要に応じて管理する
   check     接続先が serve に必要な契約を満たすかを read-only で確認する
   version   build 情報 (version/commit/build date/Go version) を出力する
 
-Run "gha-docker-controller <command> -h" for details.
+Run "arc-docker <command> -h" for details.
 `)
 }
 
 func printVersionUsage(fs *flag.FlagSet) {
-	fmt.Fprintf(fs.Output(), "Usage: gha-docker-controller version\n\nversion は build 情報 (version/commit/build date/Go version) を出力する。\n")
+	fmt.Fprintf(fs.Output(), "Usage: arc-docker version\n\nversion は build 情報 (version/commit/build date/Go version) を出力する。\n")
 }
 
 func printServeUsage(fs *flag.FlagSet) {
-	fmt.Fprintf(fs.Output(), `Usage: gha-docker-controller serve [options]
+	fmt.Fprintf(fs.Output(), `Usage: arc-docker serve [options]
 
 serve はデーモンを起動し、設定された Scale Set の runner を作成・削除する。
 SIGINT/SIGTERM で graceful shutdown する。設定の詳細は config.example.yaml を
@@ -187,7 +187,7 @@ SIGINT/SIGTERM で graceful shutdown する。設定の詳細は config.example.
 }
 
 func printCheckUsage(fs *flag.FlagSet) {
-	fmt.Fprintf(fs.Output(), `Usage: gha-docker-controller check [options]
+	fmt.Fprintf(fs.Output(), `Usage: arc-docker check [options]
 
 check は設定の接続先が serve に必要な契約を満たすかを確認する。
 container、runner、Scale Set、network は作成・削除しない。ただし完全な

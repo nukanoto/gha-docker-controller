@@ -7,7 +7,7 @@ import (
 	cerrdefs "github.com/containerd/errdefs"
 	mobyclient "github.com/moby/moby/client"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
+	"github.com/nukanoto/arc-docker/internal/config"
 )
 
 // ImageInspect inspects an image in the local store.

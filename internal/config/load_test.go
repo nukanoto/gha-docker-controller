@@ -112,7 +112,7 @@ func TestLoad_ConfigExampleFile(t *testing.T) {
 		t.Fatalf("config.example.yaml を読めませんでした: %v", err)
 	}
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
-	replaced := strings.ReplaceAll(string(data), "/etc/gha-docker-controller/github-app.pem", keyPath)
+	replaced := strings.ReplaceAll(string(data), "/etc/arc-docker/github-app.pem", keyPath)
 	c, warnings, err := Load(writeConfig(t, replaced))
 	if err != nil {
 		t.Fatalf("config.example.yaml を読み込めませんでした: %v", err)
@@ -124,7 +124,7 @@ func TestLoad_ConfigExampleFile(t *testing.T) {
 		c.GitHub.App.AppID != 123456 || !bytes.Equal(c.GitHub.App.PrivateKey, []byte(keyPEM)) {
 		t.Fatalf("GitHub 設定の正規化結果が不正です: %+v", c.GitHub)
 	}
-	if c.ScaleSet != (ScaleSetConfig{Name: "my-gha-docker-runner", RunnerGroup: "Default", MinRunners: 0, MaxRunners: 4}) {
+	if c.ScaleSet != (ScaleSetConfig{Name: "my-arc-docker-runner", RunnerGroup: "Default", MinRunners: 0, MaxRunners: 4}) {
 		t.Fatalf("Scale Set 設定の正規化結果が不正です: %+v", c.ScaleSet)
 	}
 	if c.Docker != (DockerConfig{Host: DefaultDockerHost, PullPolicy: DefaultPullPolicy}) {

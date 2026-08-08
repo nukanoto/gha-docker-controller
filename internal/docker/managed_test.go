@@ -8,7 +8,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // These unit tests cover managed guards and pure lifecycle helpers without I/O.

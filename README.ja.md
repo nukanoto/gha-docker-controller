@@ -1,8 +1,9 @@
-# gha-docker-controller
+# arc-docker
 
 ## 概要
 
-`gha-docker-controller` は、GitHub Actions の ephemeral runner をコンテナ上で動かすアプリケーションです。
+`arc-docker` は、GitHub Actions Runner Scale Sets 向けの Docker ベースの controller です。
+公式の Actions Scale Set listener を利用し、ephemeral runner を Docker コンテナとして起動します。
 
 ## 特徴
 
@@ -21,14 +22,14 @@ Docker Compose を利用して実行できます。
 ```yaml
 services:
   controller:
-    image: ghcr.io/nukanoto/gha-docker-controller:latest
+    image: ghcr.io/nukanoto/arc-docker:latest
     pull_policy: always
     restart: on-failure
     stop_grace_period: 8m
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./config.yaml:/etc/gha-docker-controller/config.yaml:ro
-      - ./gha-github-app.pem:/etc/gha-docker-controller/github-app.pem
+      - ./config.yaml:/etc/arc-docker/config.yaml:ro
+      - ./arc-docker-github-app.pem:/etc/arc-docker/github-app.pem
 ```
 
 ## GitHub 認証
@@ -71,8 +72,8 @@ github:
   app:
     id: 123456
     installationId: 654321
-    privateKeyFile: /etc/gha-docker-controller/github-app.pem
-# repository: "<repository name>"
+    privateKeyFile: /etc/arc-docker/github-app.pem
+#   repository: "<repository name>"
 
 scaleSet:
   name: my-self-hosted-runner
@@ -116,7 +117,7 @@ github:
 ## 起動前の確認
 
 ```bash
-gha-docker-controller check --config /path/to/config.yaml
+arc-docker check --config /path/to/config.yaml
 ```
 
 ## Workflow
@@ -200,5 +201,5 @@ runner:
 ## Build
 
 ```bash
-go build ./cmd/gha-docker-controller
+go build ./cmd/arc-docker
 ```

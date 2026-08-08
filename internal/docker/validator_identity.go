@@ -3,8 +3,8 @@ package docker
 import (
 	"fmt"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // validateSpecInput checks the values required to create a managed runner.

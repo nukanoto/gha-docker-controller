@@ -1,3 +1,5 @@
+/arc-docker
+# Keep the previous local build artifact ignored during migration.
 /gha-docker-controller
 config.yaml
 *.pem

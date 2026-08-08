@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nukanoto/gha-docker-controller/internal/buildinfo"
+	"github.com/nukanoto/arc-docker/internal/buildinfo"
 )
 
 // runCLI returns Run's exit code and captured streams.
@@ -61,7 +61,7 @@ func TestRun(t *testing.T) {
 			setup:    func(t *testing.T) { injectBuildVars(t, "v9.9.9-test", "deadbeefcafe", "2026-01-02T03:04:05Z") },
 			wantCode: ExitOK,
 			wantOut: []string{
-				"gha-docker-controller v9.9.9-test",
+				"arc-docker v9.9.9-test",
 				"commit: deadbeefcafe",
 				"build date: 2026-01-02T03:04:05Z",
 				"go version: " + runtime.Version(),
@@ -72,7 +72,7 @@ func TestRun(t *testing.T) {
 			args:     []string{"version"},
 			wantCode: ExitOK,
 			wantOut: []string{
-				"gha-docker-controller dev",
+				"arc-docker dev",
 				"commit: unknown",
 				"build date: unknown",
 				"go version: " + runtime.Version(),
@@ -82,42 +82,42 @@ func TestRun(t *testing.T) {
 			name:     "command 位置の -h は usage を stdout へ出して成功する",
 			args:     []string{"-h"},
 			wantCode: ExitOK,
-			wantOut:  []string{"Usage: gha-docker-controller"},
+			wantOut:  []string{"Usage: arc-docker"},
 		},
 		{
 			name:     "command 位置の --help は usage を stdout へ出して成功する",
 			args:     []string{"--help"},
 			wantCode: ExitOK,
-			wantOut:  []string{"Usage: gha-docker-controller"},
+			wantOut:  []string{"Usage: arc-docker"},
 		},
 		{
 			name:     "serve の -h は専用 usage を stderr へ出して成功する",
 			args:     []string{"serve", "-h"},
 			wantCode: ExitOK,
-			wantErr:  []string{"Usage: gha-docker-controller serve"},
+			wantErr:  []string{"Usage: arc-docker serve"},
 		},
 		{
 			name:     "check の -h は専用 usage を stderr へ出して成功する",
 			args:     []string{"check", "-h"},
 			wantCode: ExitOK,
-			wantErr:  []string{"Usage: gha-docker-controller check"},
+			wantErr:  []string{"Usage: arc-docker check"},
 		},
 		{
 			name:     "version の -h は専用 usage を stderr へ出して成功する",
 			args:     []string{"version", "-h"},
 			wantCode: ExitOK,
-			wantErr:  []string{"Usage: gha-docker-controller version"},
+			wantErr:  []string{"Usage: arc-docker version"},
 		},
 		{
 			name:     "command 欠落は usage を stderr へ出して ExitUsage で終了する",
 			wantCode: ExitUsage,
-			wantErr:  []string{"Usage: gha-docker-controller"},
+			wantErr:  []string{"Usage: arc-docker"},
 		},
 		{
 			name:     "未知 command は error と usage を stderr へ出して ExitUsage で終了する",
 			args:     []string{"frobnicate"},
 			wantCode: ExitUsage,
-			wantErr:  []string{`unknown command "frobnicate"`, "Usage: gha-docker-controller"},
+			wantErr:  []string{`unknown command "frobnicate"`, "Usage: arc-docker"},
 		},
 		{
 			name:     "serve の余分な引数は ExitUsage で終了する",

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // runnerRef identifies a runner and its container.

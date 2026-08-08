@@ -9,8 +9,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 func testConfig(t *testing.T, runtime ...string) *config.Config {

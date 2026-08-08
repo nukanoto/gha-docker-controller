@@ -1,8 +1,10 @@
-# gha-docker-controller
+# arc-docker
 
 ## Overview
 
-`gha-docker-controller` is an application that runs ephemeral GitHub Actions runners in containers.
+`arc-docker` is a Docker-based controller for GitHub Actions Runner Scale Sets.
+It uses the official Actions Scale Set listener to provision ephemeral runners
+as Docker containers.
 
 ## Features
 
@@ -21,14 +23,14 @@ You can run the application using Docker Compose.
 ```yaml
 services:
   controller:
-    image: ghcr.io/nukanoto/gha-docker-controller:latest
+    image: ghcr.io/nukanoto/arc-docker:latest
     pull_policy: always
     restart: on-failure
     stop_grace_period: 8m
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./config.yaml:/etc/gha-docker-controller/config.yaml:ro
-      - ./gha-github-app.pem:/etc/gha-docker-controller/github-app.pem
+      - ./config.yaml:/etc/arc-docker/config.yaml:ro
+      - ./arc-docker-github-app.pem:/etc/arc-docker/github-app.pem
 ```
 
 ## GitHub Authentication
@@ -75,7 +77,7 @@ github:
   app:
     id: 123456
     installationId: 654321
-    privateKeyFile: /etc/gha-docker-controller/github-app.pem
+    privateKeyFile: /etc/arc-docker/github-app.pem
   # repository: "<repository name>"
 
 scaleSet:
@@ -121,7 +123,7 @@ github:
 ## Preflight Check
 
 ```bash
-gha-docker-controller check --config /path/to/config.yaml
+arc-docker check --config /path/to/config.yaml
 ```
 
 ## Workflow
@@ -207,5 +209,5 @@ memory are optional.
 ## Build
 
 ```bash
-go build ./cmd/gha-docker-controller
+go build ./cmd/arc-docker
 ```

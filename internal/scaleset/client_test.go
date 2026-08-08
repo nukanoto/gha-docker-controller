@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
+	"github.com/nukanoto/arc-docker/internal/config"
 )
 
 // newTestConfig returns a minimal constructor config.

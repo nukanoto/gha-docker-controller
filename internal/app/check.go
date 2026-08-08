@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/docker"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
-	"github.com/nukanoto/gha-docker-controller/internal/scaleset"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/docker"
+	"github.com/nukanoto/arc-docker/internal/model"
+	"github.com/nukanoto/arc-docker/internal/scaleset"
 )
 
 func Check(cfg *config.Config, version, commit string, logger *slog.Logger) error {

@@ -8,7 +8,7 @@ import (
 
 	scalesetapi "github.com/actions/scaleset"
 
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 const jitWorkFolder = "/home/runner/_work"

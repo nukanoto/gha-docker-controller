@@ -1,9 +1,9 @@
-# Minimal example workflow for gha-docker-controller.
+# Minimal example workflow for arc-docker.
 # The Scale Set System label matches the Scale Set name.
 # Set runs-on to the same value as scaleSet.name in the config.
 # This workflow targets the runner image and HostConfig in the controller
 # configuration.
-name: gha-docker-controller example
+name: arc-docker example
 
 on:
   workflow_dispatch:

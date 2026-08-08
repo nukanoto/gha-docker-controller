@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // TestServe_NilConfigGuard covers the pre-start nil check.

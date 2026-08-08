@@ -14,8 +14,8 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // cleanupManagedFixture removes a fixture through the production guard and
@@ -91,7 +91,7 @@ func verifyInspectHostConfig(t *testing.T, in container.InspectResponse, cfg *co
 	wantEnv := map[string]bool{
 		"ACTIONS_RUNNER_INPUT_JITCONFIG=" + input.JITConfig:                                      true,
 		"ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE=1":                                   true,
-		"GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT=gha-docker-controller/" + input.UserAgentVersion: true,
+		"GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT=arc-docker/" + input.UserAgentVersion: true,
 	}
 	found := 0
 	for _, e := range cc.Env {

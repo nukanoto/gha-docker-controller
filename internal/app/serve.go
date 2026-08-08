@@ -14,11 +14,11 @@ import (
 
 	listenerapi "github.com/actions/scaleset/listener"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/controller"
-	"github.com/nukanoto/gha-docker-controller/internal/docker"
-	"github.com/nukanoto/gha-docker-controller/internal/health"
-	"github.com/nukanoto/gha-docker-controller/internal/scaleset"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/controller"
+	"github.com/nukanoto/arc-docker/internal/docker"
+	"github.com/nukanoto/arc-docker/internal/health"
+	"github.com/nukanoto/arc-docker/internal/scaleset"
 )
 
 // dockerHTTPTimeout must cover a complete runner-image pull.

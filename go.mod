@@ -1,4 +1,4 @@
-module github.com/nukanoto/gha-docker-controller
+module github.com/nukanoto/arc-docker
 
 // No toolchain directive: Go 1.25.3's go mod tidy removes "go1.25.3" as
 // redundant, so a directive would break the tidy -diff check. The release

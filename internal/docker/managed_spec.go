@@ -8,8 +8,8 @@ import (
 	"github.com/moby/moby/api/types/container"
 	mobyclient "github.com/moby/moby/client"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 const (
@@ -49,7 +49,7 @@ func BuildManagedSpec(input ManagedSpecInput) (ManagedSpec, error) {
 	env := []string{
 		jitEnvKey + "=" + input.JITConfig,
 		returnEnvKey + "=1",
-		userAgentEnvPrefix + "=gha-docker-controller/" + input.UserAgentVersion,
+		userAgentEnvPrefix + "=arc-docker/" + input.UserAgentVersion,
 	}
 
 	var stopTimeout *int

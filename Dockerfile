@@ -19,16 +19,16 @@ ARG DATE=unknown
 RUN test -f /etc/ssl/certs/ca-certificates.crt \
     && CGO_ENABLED=0 go build -trimpath \
         -ldflags "-s -w \
-            -X github.com/nukanoto/gha-docker-controller/internal/buildinfo.Version=${VERSION} \
-            -X github.com/nukanoto/gha-docker-controller/internal/buildinfo.Commit=${COMMIT} \
-            -X github.com/nukanoto/gha-docker-controller/internal/buildinfo.Date=${DATE}" \
-        -o /out/gha-docker-controller ./cmd/gha-docker-controller
+            -X github.com/nukanoto/arc-docker/internal/buildinfo.Version=${VERSION} \
+            -X github.com/nukanoto/arc-docker/internal/buildinfo.Commit=${COMMIT} \
+            -X github.com/nukanoto/arc-docker/internal/buildinfo.Date=${DATE}" \
+        -o /out/arc-docker ./cmd/arc-docker
 
 # Keep only the binary and CA bundle in the runtime image.
 FROM scratch
 
-COPY --from=build /out/gha-docker-controller /usr/local/bin/gha-docker-controller
+COPY --from=build /out/arc-docker /usr/local/bin/arc-docker
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-ENTRYPOINT ["/usr/local/bin/gha-docker-controller", "serve"]
-CMD ["--config", "/etc/gha-docker-controller/config.yaml"]
+ENTRYPOINT ["/usr/local/bin/arc-docker", "serve"]
+CMD ["--config", "/etc/arc-docker/config.yaml"]

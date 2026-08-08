@@ -18,10 +18,10 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/docker"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
-	"github.com/nukanoto/gha-docker-controller/internal/scaleset"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/docker"
+	"github.com/nukanoto/arc-docker/internal/model"
+	"github.com/nukanoto/arc-docker/internal/scaleset"
 )
 
 const (

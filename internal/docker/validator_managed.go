@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // validateManagedSpec checks only the controller-owned create contract.
@@ -48,8 +48,8 @@ func validateManagedSpec(spec ManagedSpec) error {
 			haveJIT = true
 		case value == returnEnvKey+"=1":
 			haveReturn = true
-		case strings.HasPrefix(value, userAgentEnvPrefix+"=gha-docker-controller/"):
-			if strings.TrimPrefix(value, userAgentEnvPrefix+"=gha-docker-controller/") == "" {
+		case strings.HasPrefix(value, userAgentEnvPrefix+"=arc-docker/"):
+			if strings.TrimPrefix(value, userAgentEnvPrefix+"=arc-docker/") == "" {
 				return fmt.Errorf("refusing to create: user agent env value must not be empty")
 			}
 			haveUserAgent = true

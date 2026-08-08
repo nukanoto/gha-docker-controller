@@ -8,11 +8,11 @@ import (
 
 	scalesetapi "github.com/actions/scaleset"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
+	"github.com/nukanoto/arc-docker/internal/config"
 )
 
 // systemName identifies this implementation to GitHub.
-const systemName = "gha-docker-controller"
+const systemName = "arc-docker"
 
 // Client holds the official client and build info.
 type Client struct {

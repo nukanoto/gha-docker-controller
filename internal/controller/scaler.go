@@ -18,10 +18,10 @@ import (
 	"github.com/moby/moby/api/types/container"
 	mobyclient "github.com/moby/moby/client"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/docker"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
-	"github.com/nukanoto/gha-docker-controller/internal/scaleset"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/docker"
+	"github.com/nukanoto/arc-docker/internal/model"
+	"github.com/nukanoto/arc-docker/internal/scaleset"
 )
 
 // DockerScaler implements the official listener.Scaler with oldest-first

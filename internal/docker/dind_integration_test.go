@@ -30,8 +30,8 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 const (
@@ -157,7 +157,7 @@ func verifyDindInspectFields(t *testing.T, in container.InspectResponse, cfg *co
 	for _, want := range []string{
 		"ACTIONS_RUNNER_INPUT_JITCONFIG=" + input.JITConfig,
 		"ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE=1",
-		"GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT=gha-docker-controller/" + input.UserAgentVersion,
+		"GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT=arc-docker/" + input.UserAgentVersion,
 	} {
 		if !slices.Contains(cc.Env, want) {
 			t.Fatalf("daemon 上の JIT env が契約と一致しません: %v", cc.Env)

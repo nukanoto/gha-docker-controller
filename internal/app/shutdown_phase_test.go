@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/health"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/health"
 )
 
 // TestShutdown_WaitListenerTimesOutAtDeadline covers the bounded join path.

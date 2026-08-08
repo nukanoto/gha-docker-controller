@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/controller"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/controller"
 )
 
 const (

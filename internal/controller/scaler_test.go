@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nukanoto/gha-docker-controller/internal/config"
-	"github.com/nukanoto/gha-docker-controller/internal/docker"
-	"github.com/nukanoto/gha-docker-controller/internal/model"
+	"github.com/nukanoto/arc-docker/internal/config"
+	"github.com/nukanoto/arc-docker/internal/docker"
+	"github.com/nukanoto/arc-docker/internal/model"
 )
 
 // ref uses deterministic IDs because these tests exercise state only.

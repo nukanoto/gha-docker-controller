@@ -1,4 +1,4 @@
-# Example config for gha-docker-controller.
+# Example config for arc-docker.
 # Never put secret values in this file.
 
 github:
@@ -9,10 +9,10 @@ github:
   app:
     id: 123456
     installationId: 654321
-    privateKeyFile: /etc/gha-docker-controller/github-app.pem
+    privateKeyFile: /etc/arc-docker/github-app.pem
 
 scaleSet:
-  name: my-gha-docker-runner
+  name: my-arc-docker-runner
   runnerGroup: Default
   minRunners: 0
   maxRunners: 4
