@@ -227,8 +227,8 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 	}
 
 	// StartManaged with the correct identity starts only after the fresh
-	// inspect passes the full six-label validation. The test HostConfig keeps
-	// the official image observable without changing its image command.
+	// inspect passes the full six-label validation. The production spec sets
+	// the runner command explicitly, so the official image starts its runner.
 	if _, err := c.StartManaged(t.Context(), containerID, identity); err != nil {
 		t.Fatalf("StartManaged が失敗しました: %v", err)
 	}

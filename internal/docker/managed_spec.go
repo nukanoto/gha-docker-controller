@@ -13,6 +13,9 @@ import (
 )
 
 const (
+	// The official runner image defaults to a shell, so the runner process
+	// must be selected explicitly.
+	runnerCommand      = "/home/runner/run.sh"
 	jitEnvKey          = "ACTIONS_RUNNER_INPUT_JITCONFIG"
 	returnEnvKey       = "ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE"
 	userAgentEnvPrefix = "GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT"
@@ -37,9 +40,9 @@ type ManagedSpecInput struct {
 	UserAgentVersion   string
 }
 
-// BuildManagedSpec assembles the controller-owned image, environment and
-// labels. Docker container configuration and HostConfig are otherwise left to
-// the image and the user's HostConfig value.
+// BuildManagedSpec assembles the controller-owned image, runner command,
+// environment and labels. Other Docker container configuration and HostConfig
+// are left to the image and the user's HostConfig value.
 func BuildManagedSpec(input ManagedSpecInput) (ManagedSpec, error) {
 	if err := validateSpecInput(input.Config, input); err != nil {
 		return ManagedSpec{}, fmt.Errorf("build managed spec: %w", err)
@@ -65,6 +68,7 @@ func BuildManagedSpec(input ManagedSpecInput) (ManagedSpec, error) {
 			Name: input.ContainerName,
 			Config: &container.Config{
 				Image:       cfg.Runner.Image,
+				Cmd:         []string{runnerCommand},
 				Env:         env,
 				Labels:      labels,
 				StopTimeout: stopTimeout,

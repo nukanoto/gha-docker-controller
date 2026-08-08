@@ -24,9 +24,8 @@ func testConfig(t *testing.T, runtime ...string) *config.Config {
 		},
 	}
 	if len(runtime) == 1 {
-		// The official runner image defaults to a short-lived shell. Restarting
-		// it keeps the integration fixture observable without overriding its
-		// image command in the production builder.
+		// Restarting keeps the lifecycle fixture observable after an invalid JIT
+		// configuration makes the runner process exit.
 		cfg.Runner.HostConfig = &container.HostConfig{
 			Runtime:       runtime[0],
 			NetworkMode:   "bridge",
@@ -79,10 +78,6 @@ func TestBuildManagedSpec_UsesUserHostConfig(t *testing.T) {
 		spec.create.HostConfig.Runtime != "custom-runtime" || spec.create.HostConfig.CPUQuota != 100000 {
 		t.Fatalf("HostConfig の値が失われています: %+v", spec.create.HostConfig)
 	}
-	if spec.create.Config.Cmd != nil || spec.create.Config.Entrypoint != nil ||
-		spec.create.Config.User != "" || spec.create.Config.WorkingDir != "" || spec.create.Config.StopSignal != "" {
-		t.Fatalf("image config を controller が上書きしています: %+v", spec.create.Config)
-	}
 }
 
 func TestBuildManagedSpec_LeavesHostConfigNil(t *testing.T) {
@@ -94,7 +89,7 @@ func TestBuildManagedSpec_LeavesHostConfigNil(t *testing.T) {
 
 func TestBuildManagedSpec_ControllerFields(t *testing.T) {
 	spec := mustBuild(t, testConfig(t))
-	if spec.create.Config.Image != "ubuntu" || len(spec.create.Config.Env) != 3 {
+	if spec.create.Config.Image != "ubuntu" || !reflect.DeepEqual(spec.create.Config.Cmd, []string{runnerCommand}) || len(spec.create.Config.Env) != 3 {
 		t.Fatalf("controller-owned config が不正です: %+v", spec.create.Config)
 	}
 	if !reflect.DeepEqual(spec.create.Config.Labels, spec.labels) {

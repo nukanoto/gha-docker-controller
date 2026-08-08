@@ -36,6 +36,14 @@ func TestValidateManagedSpec_PreservesLabelGuard(t *testing.T) {
 	}
 }
 
+func TestValidateManagedSpec_RequiresRunnerCommand(t *testing.T) {
+	spec := mustBuild(t, testConfig(t))
+	spec.create.Config.Cmd = nil
+	if err := validateManagedSpec(spec); err == nil || !strings.Contains(err.Error(), "runner command") {
+		t.Fatalf("runner command の改変を拒否しませんでした: %v", err)
+	}
+}
+
 func TestValidateManagedSpec_RejectsZeroValue(t *testing.T) {
 	if err := validateManagedSpec(ManagedSpec{}); err == nil {
 		t.Fatal("zero value の ManagedSpec を拒否しませんでした")

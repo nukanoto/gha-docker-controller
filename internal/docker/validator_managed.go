@@ -7,8 +7,8 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// validateManagedSpec re-checks only the controller-owned create contract.
-// User-provided container settings are deliberately outside this validator.
+// validateManagedSpec re-checks the controller-owned create contract.
+// Image-owned container settings are otherwise outside this validator.
 func validateManagedSpec(spec ManagedSpec) error {
 	if spec.create.Config == nil {
 		return fmt.Errorf("refusing to create: managed spec is zero or missing container config")
@@ -24,6 +24,9 @@ func validateManagedSpec(spec ManagedSpec) error {
 	}
 	if spec.create.Config.Image == "" {
 		return fmt.Errorf("refusing to create: managed spec has no image")
+	}
+	if len(spec.create.Config.Cmd) != 1 || spec.create.Config.Cmd[0] != runnerCommand {
+		return fmt.Errorf("refusing to create: runner command must be %q", runnerCommand)
 	}
 
 	if err := model.ValidateLabels(spec.labels, spec.identity); err != nil {

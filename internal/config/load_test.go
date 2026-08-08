@@ -124,7 +124,7 @@ func TestLoad_ConfigExampleFile(t *testing.T) {
 		c.GitHub.App.AppID != 123456 || !bytes.Equal(c.GitHub.App.PrivateKey, []byte(keyPEM)) {
 		t.Fatalf("GitHub 設定の正規化結果が不正です: %+v", c.GitHub)
 	}
-	if c.ScaleSet != (ScaleSetConfig{Name: "production", RunnerGroup: "default", MinRunners: 0, MaxRunners: 4}) {
+	if c.ScaleSet != (ScaleSetConfig{Name: "my-gha-docker-runner", RunnerGroup: "Default", MinRunners: 0, MaxRunners: 4}) {
 		t.Fatalf("Scale Set 設定の正規化結果が不正です: %+v", c.ScaleSet)
 	}
 	if c.Docker != (DockerConfig{Host: DefaultDockerHost, PullPolicy: DefaultPullPolicy}) {
