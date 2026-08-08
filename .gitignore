@@ -1,1 +1,3 @@
 /gha-docker-controller
+config.yaml
+*.pem
