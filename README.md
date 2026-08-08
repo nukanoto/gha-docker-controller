@@ -155,8 +155,10 @@ jobs:
 To use Docker-in-Docker, provide an image that starts an independent Docker
 daemon and configure the image's requirements under `runner.hostConfig`.
 
-The repository includes an example Dockerfile in
-[`images/dind-runner/`](images/dind-runner/).
+The repository includes separate runner images for each outer runtime:
+
+* [`images/dind-runner-runsc/`](images/dind-runner-runsc/) for gVisor
+* [`images/dind-runner-sysbox/`](images/dind-runner-sysbox/) for Sysbox
 
 ### runsc (gVisor)
 
@@ -180,11 +182,27 @@ Configure the `runner` section in `config.yaml` as follows:
 
 ```yaml
 runner:
-  image: ghcr.io/example/gha-dind-runner@sha256:<digest>
+  image: ghcr.io/example/gha-dind-runner-runsc@sha256:<digest>
   hostConfig:
     runtime: runsc
     capDrop: [ALL]
-    capAdd: [NET_ADMIN, NET_RAW, SYS_ADMIN]
+    capAdd:
+      - AUDIT_WRITE
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - FSETID
+      - KILL
+      - MKNOD
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+      - NET_RAW
+      - SETFCAP
+      - SETGID
+      - SETPCAP
+      - SETUID
+      - SYS_ADMIN
+      - SYS_CHROOT
     securityOpt: [no-new-privileges]
     mounts:
       - type: tmpfs
@@ -192,6 +210,8 @@ runner:
         tmpfsOptions:
           sizeBytes: 17179869184
           mode: 448
+          options:
+            - [exec]
     pidsLimit: 1024
 ```
 
@@ -205,6 +225,31 @@ memory are optional.
 > `services.<name>.ports`, `docker run -p`, `--publish`, and `--expose` cannot be used.
 >
 > Specify `options: --network host` for containers.
+
+### Sysbox
+
+Install Sysbox on the Docker host and register the `sysbox-runc` runtime.
+Use the Sysbox runner image with the runtime selected in `HostConfig`.
+
+```yaml
+runner:
+  image: ghcr.io/example/gha-dind-runner-sysbox@sha256:<digest>
+  hostConfig:
+    runtime: sysbox-runc
+    mounts:
+      - type: tmpfs
+        target: /var/lib/docker
+        tmpfsOptions:
+          sizeBytes: 17179869184
+          mode: 448
+          options:
+            - [exec]
+    pidsLimit: 1024
+```
+
+Do not set `privileged`, `SYS_ADMIN`, or the runsc-specific capability and
+network workarounds for the Sysbox image. The image uses the inner Docker
+daemon's normal networking.
 
 ## Build
 

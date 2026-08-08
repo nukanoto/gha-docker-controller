@@ -149,7 +149,10 @@ jobs:
 Docker-in-Docker を使う場合は、独立した Docker daemon を起動する image を用意し、
 その image に必要な設定を `runner.hostConfig` に指定します。
 
-リポジトリには [`images/dind-runner/`](images/dind-runner/) に Dockerfile の例があります。
+リポジトリには outer runtime ごとに次の runner image があります。
+
+- gVisor 用: [`images/dind-runner-runsc/`](images/dind-runner-runsc/)
+- Sysbox 用: [`images/dind-runner-sysbox/`](images/dind-runner-sysbox/)
 
 ### runsc (gVisor) の場合
 
@@ -173,11 +176,27 @@ host の `/etc/docker/daemon.json` に以下のように設定します。
 
 ```yaml
 runner:
-  image: ghcr.io/example/gha-dind-runner@sha256:<digest>
+  image: ghcr.io/example/gha-dind-runner-runsc@sha256:<digest>
   hostConfig:
     runtime: runsc
     capDrop: [ALL]
-    capAdd: [NET_ADMIN, NET_RAW, SYS_ADMIN]
+    capAdd:
+      - AUDIT_WRITE
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - FSETID
+      - KILL
+      - MKNOD
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+      - NET_RAW
+      - SETFCAP
+      - SETGID
+      - SETPCAP
+      - SETUID
+      - SYS_ADMIN
+      - SYS_CHROOT
     securityOpt: [no-new-privileges]
     mounts:
       - type: tmpfs
@@ -197,6 +216,30 @@ runner:
 > `services.<name>.ports`、`docker run -p`、`--publish`、`--expose` は使用できません。
 >
 > コンテナには `options: --network host` を指定してください。
+
+### Sysbox の場合
+
+Docker host に Sysbox をインストールし、`sysbox-runc` runtime を登録します。
+runner image に Sysbox 用 image を指定し、`HostConfig` で runtime を選択します。
+
+```yaml
+runner:
+  image: ghcr.io/example/gha-dind-runner-sysbox@sha256:<digest>
+  hostConfig:
+    runtime: sysbox-runc
+    mounts:
+      - type: tmpfs
+        target: /var/lib/docker
+        tmpfsOptions:
+          sizeBytes: 17179869184
+          mode: 448
+          options:
+            - [exec]
+    pidsLimit: 1024
+```
+
+Sysbox 用 image では `privileged`、`SYS_ADMIN`、runsc 固有の capability や network workaround を指定しません。
+inner Docker daemon は通常の network 設定で起動します。
 
 ## Build
 
