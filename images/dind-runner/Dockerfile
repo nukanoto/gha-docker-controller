@@ -2,7 +2,7 @@ FROM ghcr.io/actions/actions-runner
 
 USER root
 
-# Add only the tools needed to run dind Docker.
+# Install only tools required by the DinD entrypoint.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         iproute2 \
@@ -11,8 +11,7 @@ RUN apt-get update \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Verify the dockerd version shipped in the official runner image at
-# build time.
+# Fail the build if the base image ships another Docker version.
 RUN set -eu; \
     version="$(dockerd --version)"; \
     case "$version" in \

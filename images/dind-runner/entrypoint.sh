@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-# Enable implicit failure so dockerd is always stopped even on an
-# unexpected failure.
+# Keep cleanup active on unexpected failures.
 set -Eeuo pipefail
 
 readonly docker_socket="/var/run/docker.sock"
@@ -13,19 +12,17 @@ runner_pid=""
 shutdown_requested=0
 shutdown_exit_code=143
 
-# Runtime logs are uniformly English; env var values are never passed as
-# arguments.
+# Never pass environment values through log arguments.
 log() {
     printf '%s\n' "$*" >&2
 }
 
-# Report fatal errors without any secret value.
+# Report failures without secret values.
 die() {
     log "ERROR: $*"
     exit 1
 }
 
-# The timeout env vars accept only positive integers.
 validate_timeout() {
     local name=$1
     local value=$2
@@ -37,8 +34,7 @@ validate_timeout() {
 validate_timeout "PROVISIONING_TIMEOUT_SECONDS" "$provisioning_timeout"
 validate_timeout "STOP_TIMEOUT_SECONDS" "$stop_timeout"
 
-# Check procfs so a finished but unreaped zombie is not mistaken for a
-# running process.
+# Treat zombies as stopped processes.
 process_is_running() {
     local pid=$1
     local state
@@ -47,7 +43,7 @@ process_is_running() {
     [[ $state != Z ]]
 }
 
-# Forward the signal received by the runner from root PID 1.
+# PID 1 forwards termination to the runner.
 forward_signal() {
     local signal=$1
     shutdown_requested=1
@@ -66,8 +62,7 @@ forward_signal() {
 trap 'forward_signal INT' INT
 trap 'forward_signal TERM' TERM
 
-# Stop dockerd with TERM, KILL only after the deadline, then reap the
-# child processes.
+# Give dockerd a grace period before forcing it down.
 stop_dockerd() {
     [[ -n $dockerd_pid ]] || return 0
 
@@ -89,8 +84,7 @@ stop_dockerd() {
     dockerd_pid=""
 }
 
-# Collapse every exit into one EXIT path without changing the runner exit
-# code.
+# Always stop dockerd and preserve the runner exit code.
 cleanup() {
     local status=$?
     trap - EXIT
@@ -100,7 +94,6 @@ cleanup() {
 
 trap cleanup EXIT
 
-# Get the default route device and source address.
 get_default_network() {
     local route
     local device
@@ -122,8 +115,7 @@ get_default_network() {
     printf '%s\t%s\n' "$device" "$address"
 }
 
-# Prefer iptables-legacy and configure outbound SNAT for TCP and UDP
-# idempotently.
+# Configure idempotent outbound SNAT for TCP and UDP.
 configure_snat() {
     local device=$1
     local address=$2
@@ -143,8 +135,7 @@ configure_snat() {
     done
 }
 
-# Wait for the unix socket _ping to return OK within the provisioning
-# timeout.
+# Wait for the daemon socket to become ready.
 wait_for_dockerd() {
     local deadline=$((SECONDS + provisioning_timeout))
     local ping_response
@@ -171,15 +162,14 @@ wait_for_dockerd() {
     die "Docker daemon readiness timed out"
 }
 
-# Prepare the network first; dockerd must not inherit the JIT env vars.
+# Prepare networking before starting dockerd.
 printf '1\n' > /proc/sys/net/ipv4/ip_forward || die "failed to enable IPv4 forwarding"
 network_info="$(get_default_network)"
 IFS=$'\t' read -r default_device default_address <<<"$network_info"
 configure_snat "$default_device" "$default_address"
 
 rm -f "$docker_socket"
-# Only the runner receives the JIT config; it never reaches the dockerd
-# environment or argv.
+# Keep the JIT config out of dockerd's environment and argv.
 env -u "$runner_jit_variable" /usr/bin/dockerd \
     --host=unix:///var/run/docker.sock \
     --group=docker \
@@ -194,14 +184,13 @@ if (( shutdown_requested != 0 )); then
 fi
 
 export DOCKER_HOST="unix:///var/run/docker.sock"
-# Docker assigns HOME from PID 1, while the runner runs as a non-root user.
+# Docker assigns HOME from PID 1, while the runner runs as runner.
 export HOME=/home/runner
 log "Starting runner"
 setpriv --reuid=runner --regid=runner --init-groups --no-new-privs /home/runner/run.sh &
 runner_pid=$!
 
-# Even when a signal interrupts wait, the original runner exit code is
-# kept.
+# Preserve the runner exit code when wait is interrupted by a signal.
 runner_exit_code=0
 while true; do
     set +e

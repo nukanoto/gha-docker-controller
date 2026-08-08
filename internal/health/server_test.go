@@ -1,8 +1,6 @@
 package health
 
-// Tests use only a real loopback server (127.0.0.1:0) and the standard HTTP
-// client; no mocks/stubs/fakes. Endpoint behavior is grouped into one
-// table-driven test.
+// Endpoint tests use a real loopback server and standard HTTP client.
 
 import (
 	"context"
@@ -13,13 +11,10 @@ import (
 	"time"
 )
 
-// testClient is the HTTP client connecting to the real loopback. It has a
-// timeout so server-side problems do not hang the test itself.
+// testClient prevents a server-side failure from hanging the test.
 var testClient = &http.Client{Timeout: 5 * time.Second}
 
-// startTestServer starts a server on the real loopback 127.0.0.1:0 with a
-// concrete Store and sets the session/listener running states. Cleanup runs
-// a graceful shutdown and guarantees no serve goroutine remains.
+// startTestServer creates a ready loopback server and joins it on cleanup.
 func startTestServer(t *testing.T, sessionRunning, listenerRunning bool) *Server {
 	t.Helper()
 	store := NewStore()
@@ -42,9 +37,7 @@ func startTestServer(t *testing.T, sessionRunning, listenerRunning bool) *Server
 	return srv
 }
 
-// TestEndpoints verifies /livez and /readyz status/body table-driven. It
-// covers the 4 session/listener running combinations plus an unregistered
-// path and a disallowed method.
+// TestEndpoints covers live, ready, unknown-path, and method handling.
 func TestEndpoints(t *testing.T) {
 	tests := []struct {
 		name       string

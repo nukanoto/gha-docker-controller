@@ -13,23 +13,21 @@ import (
 )
 
 const (
-	// The official runner image defaults to a shell, so the runner process
-	// must be selected explicitly.
+	// The official image defaults to /bin/bash, not the runner listener.
 	runnerCommand      = "/home/runner/run.sh"
 	jitEnvKey          = "ACTIONS_RUNNER_INPUT_JITCONFIG"
 	returnEnvKey       = "ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE"
 	userAgentEnvPrefix = "GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT"
 )
 
-// ManagedSpec contains the create request and the controller-owned identity.
-// HostConfig is intentionally not synthesized or restricted here.
+// ManagedSpec contains the immutable Docker request and managed identity.
 type ManagedSpec struct {
 	create   mobyclient.ContainerCreateOptions
 	identity model.RunnerIdentity
 	labels   map[string]string
 }
 
-// ManagedSpecInput is the typed input for BuildManagedSpec.
+// ManagedSpecInput supplies controller-owned values for BuildManagedSpec.
 type ManagedSpecInput struct {
 	Config             *config.Config
 	Identity           model.RunnerIdentity
@@ -40,9 +38,8 @@ type ManagedSpecInput struct {
 	UserAgentVersion   string
 }
 
-// BuildManagedSpec assembles the controller-owned image, runner command,
-// environment and labels. Other Docker container configuration and HostConfig
-// are left to the image and the user's HostConfig value.
+// BuildManagedSpec assembles the runner command, environment, and labels.
+// User-supplied HostConfig is passed through unchanged.
 func BuildManagedSpec(input ManagedSpecInput) (ManagedSpec, error) {
 	if err := validateSpecInput(input.Config, input); err != nil {
 		return ManagedSpec{}, fmt.Errorf("build managed spec: %w", err)

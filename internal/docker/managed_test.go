@@ -11,24 +11,14 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// This file holds only pure unit tests for managed/lifecycle. Real Docker
-// I/O (fresh inspect, stop/wait, logs, ContainerRemove) goes to the
-// integration tests against a real daemon with no mock/stub, so here the
-// fresh label guard (verifyManagedLabels), unmanaged rejection, identity
-// restoration from observed labels (identityFromObserved), label defensive
-// copies, exit code observation, stop target decision (needsStop), stop
-// timeout ceiling (stopTimeoutSeconds) and bounded log retention
-// (boundedWriter) are verified without mocks.
+// These unit tests cover managed guards and pure lifecycle helpers without I/O.
 
-// testIdentity is the positive identity used for the managed guard checks.
+// testIdentity returns a valid managed identity.
 func testIdentity() model.RunnerIdentity {
 	return model.RunnerIdentity{ScaleSetID: 10, RunnerID: 100, RunnerName: "ghadc-test-r100"}
 }
 
-// TestVerifyManagedLabels_ExactMatch verifies that the managed guard
-// accepts the required six labels (managed=true, scale-set-id, runner-id,
-// runner-name, controller-instance, created-at) with an exact match against
-// the identity.
+// TestVerifyManagedLabels_ExactMatch covers the valid managed identity.
 func TestVerifyManagedLabels_ExactMatch(t *testing.T) {
 	identity := testIdentity()
 	labels := model.BuildLabels(identity, "instance-1", time.Now())
@@ -37,12 +27,7 @@ func TestVerifyManagedLabels_ExactMatch(t *testing.T) {
 	}
 }
 
-// TestVerifyManagedLabels_Mismatch verifies that missing or mismatched
-// required labels are rejected as ManagedGuardError. Besides
-// managed/scale-set-id/runner-id, tampering with runner-name,
-// controller-instance and created-at is also rejected (full validation via
-// model.ValidateLabels). Destructive operations always abort on a fresh
-// inspect label mismatch.
+// TestVerifyManagedLabels_Mismatch covers every required-label guard.
 func TestVerifyManagedLabels_Mismatch(t *testing.T) {
 	identity := testIdentity()
 	cases := []struct {
@@ -55,7 +40,7 @@ func TestVerifyManagedLabels_Mismatch(t *testing.T) {
 		{name: "runner-id の不一致", mutate: func(m map[string]string) { m[model.RunnerIDLabelKey] = "101" }},
 		{name: "runner-name の不一致", mutate: func(m map[string]string) { m[model.RunnerNameLabelKey] = "tampered-runner" }},
 		{name: "runner-name の欠落", mutate: func(m map[string]string) { delete(m, model.RunnerNameLabelKey) }},
-		// controller-instance is for auditing; any non-empty value is allowed.
+		// Controller instance is audited but not tied to the test identity.
 		{name: "controller-instance の欠落", mutate: func(m map[string]string) { delete(m, model.ControllerInstanceLabelKey) }},
 		{name: "created-at の改変 (非 UTC)", mutate: func(m map[string]string) { m[model.CreatedAtLabelKey] = "2000-01-01T00:00:00+09:00" }},
 		{name: "created-at の欠落", mutate: func(m map[string]string) { delete(m, model.CreatedAtLabelKey) }},
@@ -76,9 +61,7 @@ func TestVerifyManagedLabels_Mismatch(t *testing.T) {
 	}
 }
 
-// TestVerifyManagedLabels_InvalidIdentityAndNil verifies that the guard
-// rejects a non-positive identity and nil labels. A non-positive identity is
-// distinguished as an input error, not a guard error.
+// TestVerifyManagedLabels_InvalidIdentityAndNil covers invalid guard inputs.
 func TestVerifyManagedLabels_InvalidIdentityAndNil(t *testing.T) {
 	identity := testIdentity()
 	if err := verifyManagedLabels("c1", nil, identity); err == nil {
@@ -95,22 +78,17 @@ func TestVerifyManagedLabels_InvalidIdentityAndNil(t *testing.T) {
 	}
 }
 
-// TestManagedContainer_LabelsDefensiveCopy verifies that the internal label
-// map of ManagedContainer and the Labels() return value are defensive
-// copies. Neither mutating the input observation map nor the returned map
-// affects the internal state.
+// TestManagedContainer_LabelsDefensiveCopy protects observed label state.
 func TestManagedContainer_LabelsDefensiveCopy(t *testing.T) {
 	identity := testIdentity()
 	source := model.BuildLabels(identity, "instance-1", time.Now())
 
-	// Observation via Summary (ListManaged path).
 	summary := managedFromSummary(container.Summary{
 		ID:     "c1",
 		Names:  []string{"/ghadc-name"},
 		Labels: source,
 		State:  container.StateRunning,
 	})
-	// Observation via Inspect (VerifyManaged path).
 	inspect := managedFromInspect(container.InspectResponse{
 		ID:     "c2",
 		Name:   "/ghadc-name2",
@@ -119,18 +97,15 @@ func TestManagedContainer_LabelsDefensiveCopy(t *testing.T) {
 	})
 
 	for _, mc := range []ManagedContainer{summary, inspect} {
-		// Mutating the source map later must not change the internal state.
 		source[model.RunnerNameLabelKey] = "tampered"
 		if got := mc.Labels()[model.RunnerNameLabelKey]; got != identity.RunnerName {
 			t.Fatalf("入力元の書き換えが内部 label に反映されています: %q", got)
 		}
-		// Mutating the Labels() return value must not change the internal state.
 		got := mc.Labels()
 		got[model.ManagedLabelKey] = "false"
 		if internal := mc.Labels()[model.ManagedLabelKey]; internal != model.ManagedLabelValue {
 			t.Fatalf("取得側の書き換えが内部 label に反映されています: %q", internal)
 		}
-		// Labels() returns an independent map on every call.
 		first := mc.Labels()
 		second := mc.Labels()
 		first[model.ControllerInstanceLabelKey] = "changed"
@@ -140,25 +115,19 @@ func TestManagedContainer_LabelsDefensiveCopy(t *testing.T) {
 	}
 }
 
-// TestManagedContainer_LabelsNilSafety verifies that observations with nil
-// labels / nil Config return a nil map without panicking. maps.Clone keeps
-// nil as nil; the Labels() return value is read-only, and nil is rejected by
-// the "labels are missing" check in model.ValidateLabels, so it is safe.
+// TestManagedContainer_LabelsNilSafety covers malformed daemon observations.
 func TestManagedContainer_LabelsNilSafety(t *testing.T) {
-	// A Summary with nil Labels must not panic.
 	summary := managedFromSummary(container.Summary{ID: "c1", Labels: nil})
 	if labels := summary.Labels(); labels != nil {
 		t.Fatalf("nil label 入力が非 nil map を返しました: %v", labels)
 	}
-	// An Inspect with nil Config (daemon contract violation) must not panic.
 	inspect := managedFromInspect(container.InspectResponse{ID: "c2", Config: nil})
 	if labels := inspect.Labels(); labels != nil {
 		t.Fatalf("nil Config 入力が非 nil map を返しました: %v", labels)
 	}
 }
 
-// TestManagedFromInspect_ExitCode verifies that only exited/dead containers
-// keep an exit code. Cleanup step 4 puts this observation on the result.
+// TestManagedFromInspect_ExitCode covers terminal-state exit codes.
 func TestManagedFromInspect_ExitCode(t *testing.T) {
 	exited := managedFromInspect(container.InspectResponse{
 		State: &container.State{Status: container.StateExited, ExitCode: 7},
@@ -180,8 +149,7 @@ func TestManagedFromInspect_ExitCode(t *testing.T) {
 	}
 }
 
-// TestNeedsStop verifies the stop target decision (running/paused/restarting).
-// created/exited/dead need no stop; the stop is applied only to targets.
+// TestNeedsStop covers stoppable container states.
 func TestNeedsStop(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -204,9 +172,7 @@ func TestNeedsStop(t *testing.T) {
 	}
 }
 
-// TestStopTimeoutSeconds verifies the ceiling conversion of the stop timeout
-// to seconds. The SDK interprets a Timeout of 0 as "kill immediately with no
-// grace", so a positive setting must never round down to 0 seconds.
+// TestStopTimeoutSeconds protects the SDK's nonzero grace period.
 func TestStopTimeoutSeconds(t *testing.T) {
 	cases := []struct {
 		in   time.Duration
@@ -224,10 +190,7 @@ func TestStopTimeoutSeconds(t *testing.T) {
 	}
 }
 
-// TestIdentityFromObserved_Valid verifies that the correct identity is
-// restored from the labels observed at enumeration time. The destructive
-// guard matches this identity against fresh-inspect labels, so a broken
-// restoration would make managed containers impossible to destroy.
+// TestIdentityFromObserved_Valid covers identity restoration for cleanup.
 func TestIdentityFromObserved_Valid(t *testing.T) {
 	identity := testIdentity()
 	labels := model.BuildLabels(identity, "instance-1", time.Now())
@@ -240,12 +203,7 @@ func TestIdentityFromObserved_Valid(t *testing.T) {
 	}
 }
 
-// TestIdentityFromObserved_Malformed verifies that malformed observed
-// labels are rejected as ManagedGuardError. Besides missing/non-integer/
-// non-positive scale-set-id and runner-id, missing or invalid values among
-// the required six labels (runner-name, controller-instance, created-at)
-// are also rejected. A container with malformed observed labels is rejected
-// before any I/O, so CleanupManaged and Recover never change it.
+// TestIdentityFromObserved_Malformed prevents malformed observations from authorizing cleanup.
 func TestIdentityFromObserved_Malformed(t *testing.T) {
 	identity := testIdentity()
 	cases := []struct {
@@ -280,9 +238,7 @@ func TestIdentityFromObserved_Malformed(t *testing.T) {
 	}
 }
 
-// TestIdentityFromObserved_NilLabels verifies that a nil label observation
-// (for example, a zero-value ManagedContainer) is rejected as a
-// ManagedGuardError.
+// TestIdentityFromObserved_NilLabels covers a zero-value observation.
 func TestIdentityFromObserved_NilLabels(t *testing.T) {
 	_, err := identityFromObserved("c1", nil)
 	var guardErr *ManagedGuardError
@@ -291,9 +247,7 @@ func TestIdentityFromObserved_NilLabels(t *testing.T) {
 	}
 }
 
-// TestBoundedWriter verifies that boundedWriter keeps only up to the limit
-// bytes, discards the excess and always returns the full input length. This
-// contract is what lets stdcopy keep consuming the stream to the end.
+// TestBoundedWriter protects bounded retention while draining the stream.
 func TestBoundedWriter(t *testing.T) {
 	cases := []struct {
 		name string

@@ -1,8 +1,4 @@
-// app_test.go verifies only the pure parts of the app package. Serve/Check
-// external I/O (Docker, GitHub) is not faked; paths without I/O such as the
-// nil config guard and the check dummy input generation (checkSpecInput) are
-// verified with real objects. Tests that start the daemon are integration
-// tag targets.
+// These unit tests cover app guards and pure input construction without I/O.
 package app
 
 import (
@@ -13,9 +9,7 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// TestServe_NilConfigGuard verifies that Serve rejects a nil config
-// immediately without I/O and returns "serve: nil config". This guard runs
-// before the logger and signal registration.
+// TestServe_NilConfigGuard covers the pre-start nil check.
 func TestServe_NilConfigGuard(t *testing.T) {
 	err := Serve(nil, "dev", "unknown", nil)
 	if err == nil || err.Error() != "serve: nil config" {
@@ -23,8 +17,7 @@ func TestServe_NilConfigGuard(t *testing.T) {
 	}
 }
 
-// TestCheck_NilConfigGuard verifies that Check rejects a nil config
-// immediately without I/O and returns "check: nil config".
+// TestCheck_NilConfigGuard covers the pre-check nil guard.
 func TestCheck_NilConfigGuard(t *testing.T) {
 	err := Check(nil, "dev", "unknown", nil)
 	if err == nil || err.Error() != "check: nil config" {
@@ -32,11 +25,7 @@ func TestCheck_NilConfigGuard(t *testing.T) {
 	}
 }
 
-// TestCheck_CheckSpecInputIsPureDummy verifies that checkSpecInput produces
-// fixed dummy values without external I/O. The JIT config and controller
-// instance are an opaque secret / audit value, so they are fixed dummies
-// ("check") and no real value ever reaches logs or errors. The identity
-// follows positive dummy IDs and the naming conventions.
+// TestCheck_CheckSpecInputIsPureDummy keeps opaque inputs out of logs/errors.
 func TestCheck_CheckSpecInputIsPureDummy(t *testing.T) {
 	cfg := &config.Config{ScaleSet: config.ScaleSetConfig{Name: "prod"}}
 	in := checkSpecInput(cfg, "v9.9.9")
@@ -59,7 +48,7 @@ func TestCheck_CheckSpecInputIsPureDummy(t *testing.T) {
 	if in.UserAgentVersion != "v9.9.9" {
 		t.Fatalf("UserAgentVersion が渡した version と異なります: %q", in.UserAgentVersion)
 	}
-	// CreatedAt is the current UTC time, i.e., right before the call.
+	// CreatedAt is part of the managed-label contract and must be current UTC.
 	if in.CreatedAt.IsZero() || in.CreatedAt.Location() != time.UTC {
 		t.Fatalf("CreatedAt が UTC ではありません: %v", in.CreatedAt)
 	}

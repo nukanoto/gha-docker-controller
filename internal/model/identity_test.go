@@ -13,8 +13,7 @@ func testLabelIdentity() RunnerIdentity {
 	}
 }
 
-// TestBuildLabels_SixLabelsRoundTrip verifies that the six required labels
-// are built without losing values and validate with the same identity.
+// TestBuildLabels_SixLabelsRoundTrip covers the managed-label round trip.
 func TestBuildLabels_SixLabelsRoundTrip(t *testing.T) {
 	identity := testLabelIdentity()
 	createdAt := time.Date(2026, time.March, 1, 2, 3, 4, 5678, time.FixedZone("JST", 9*60*60))
@@ -39,9 +38,7 @@ func TestBuildLabels_SixLabelsRoundTrip(t *testing.T) {
 	}
 }
 
-// TestValidateLabels_InvalidEachRequiredLabel verifies, table-driven, the
-// cases where each of the six required labels is broken one at a time and
-// where the map is missing, confirming managed and identity protection.
+// TestValidateLabels_InvalidEachRequiredLabel covers each required-label guard.
 func TestValidateLabels_InvalidEachRequiredLabel(t *testing.T) {
 	identity := testLabelIdentity()
 	createdAt := time.Date(2026, time.March, 1, 2, 3, 4, 0, time.UTC)
@@ -77,9 +74,7 @@ func TestValidateLabels_InvalidEachRequiredLabel(t *testing.T) {
 	}
 }
 
-// TestValidateLabels_IdentityAndTimestampValidation verifies table-driven
-// that not only the label values but also the positive-number conditions of
-// identity and the normalized created-at form are validation targets.
+// TestValidateLabels_IdentityAndTimestampValidation covers identity and time guards.
 func TestValidateLabels_IdentityAndTimestampValidation(t *testing.T) {
 	createdAt := time.Date(2026, time.March, 1, 2, 3, 4, 0, time.UTC)
 	tests := []struct {

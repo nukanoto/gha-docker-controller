@@ -1,5 +1,4 @@
-// cli_helpers_test.go verifies the shared CLI test helpers and logger
-// setup. A fixed marker is used for secret non-leak verification.
+// CLI helper tests use real files, buffers, and loggers.
 package cli
 
 import (
@@ -15,14 +14,10 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/config"
 )
 
-// secretMarker is the fixed marker string used to verify that secrets do
-// not leak. Passing a real secret into tests would itself leak it through
-// logs, so a fixed non-secret string verifies the wrap semantics and
-// non-exposure.
+// A fixed non-secret marker avoids putting real credentials in test output.
 const secretMarker = "SECRET-MARKER-9f8e7d6c5b4a"
 
-// writeTempFile writes a real file into a temporary directory and returns
-// its path. t.TempDir cleanup removes it at test end.
+// writeTempFile creates a real temporary file.
 func writeTempFile(t *testing.T, name, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -32,10 +27,7 @@ func writeTempFile(t *testing.T, name, content string) string {
 	return path
 }
 
-// invalidAuthConfigYAML returns a statically invalid config YAML that
-// references a secret file. maxRunners is missing, so config.Load reads the
-// secret and then fails validation; this verifies that the CLI error output
-// does not leak the secret value.
+// invalidAuthConfigYAML makes Load read a secret before static validation fails.
 func invalidAuthConfigYAML(secretPath string) string {
 	return fmt.Sprintf(`github:
   scope: organization
@@ -51,10 +43,7 @@ runner:
 `, secretPath)
 }
 
-// TestLogWarnings_PathAndMessageOnly verifies that a config Warning appears
-// in the JSON log with only the two fields path and message. Per config's
-// contract warnings contain no secrets. The failure branch prints no
-// observed warning and reports with fixed Japanese text.
+// TestLogWarnings_PathAndMessageOnly covers the non-secret warning fields.
 func TestLogWarnings_PathAndMessageOnly(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
@@ -73,10 +62,7 @@ func TestLogWarnings_PathAndMessageOnly(t *testing.T) {
 	}
 }
 
-// TestNewLogger_JSONDefaultAndLevelFiltering verifies that newLogger picks
-// JSON for the default case (non-text) and text only when explicitly
-// configured, and filters output by level. The destination is a real
-// writer.
+// TestNewLogger_JSONDefaultAndLevelFiltering covers format and level filtering.
 func TestNewLogger_JSONDefaultAndLevelFiltering(t *testing.T) {
 	var buf bytes.Buffer
 	logger := newLogger(config.LogFormatJSON, config.LogLevelError, &buf)
@@ -92,7 +78,6 @@ func TestNewLogger_JSONDefaultAndLevelFiltering(t *testing.T) {
 		t.Fatalf("level error で error が出力されていません: %q", buf.String())
 	}
 
-	// text is chosen only when explicitly configured.
 	buf.Reset()
 	textLogger := newLogger(config.LogFormatText, config.LogLevelInfo, &buf)
 	textLogger.Info("hello")
@@ -101,8 +86,7 @@ func TestNewLogger_JSONDefaultAndLevelFiltering(t *testing.T) {
 	}
 }
 
-// TestSlogLevel_Mapping verifies the mapping of the 4 config level names and
-// the defensive default (info) for unknown values.
+// TestSlogLevel_Mapping covers configured and defensive levels.
 func TestSlogLevel_Mapping(t *testing.T) {
 	tests := []struct {
 		level string

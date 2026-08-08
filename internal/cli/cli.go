@@ -1,6 +1,4 @@
-// Package cli provides the three gha-docker-controller subcommands
-// (serve/check/version). It uses the standard flag package and handles
-// config loading, logger setup, app invocation, and exit code decisions.
+// Package cli implements the serve, check, and version commands.
 package cli
 
 import (
@@ -16,31 +14,22 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/config"
 )
 
-// DefaultConfigPath is the default config file path when --config is not
-// given.
+// DefaultConfigPath is used when --config is omitted.
 const DefaultConfigPath = "/etc/gha-docker-controller/config.yaml"
 
-// Exit codes. success is 0, runtime error is 1, usage error is 2. These
-// values are a contract interpreted by the systemd unit and monitoring.
+// Exit codes are part of the systemd and monitoring contract.
 const (
-	// ExitOK is the success exit code.
+	// ExitOK indicates success.
 	ExitOK = 0
-	// ExitError is the runtime error exit code (config load failure,
-	// connection failure, fatal, etc.).
+	// ExitError indicates a runtime failure.
 	ExitError = 1
-	// ExitUsage is the exit code for command line errors (unknown command,
-	// flag error, extra arguments).
+	// ExitUsage indicates invalid command-line usage.
 	ExitUsage = 2
 )
 
-// Run parses the command line, runs serve/check/version, and returns the
-// exit code. main only passes the return value to os.Exit; this function is
-// the only I/O path. stdout is for version and explicit help output, stderr
-// for logs and errors. An unknown or missing command prints usage to stderr
-// and returns ExitUsage.
+// Run parses the command line, runs a subcommand, and returns its exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		// No command: print usage as an error and exit with a usage error.
 		printUsage(stderr)
 		return ExitUsage
 	}
@@ -77,7 +66,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	case "version":
 		return runVersion(args[1:], stdout, stderr)
 	case "-h", "--help":
-		// An explicit help request is a success: print usage to stdout.
 		printUsage(stdout)
 		return ExitOK
 	default:
@@ -87,10 +75,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-// runServe runs the serve subcommand: load config, set up the logger, and
-// delegate to app.Serve. SIGINT/SIGTERM receipt and graceful shutdown are
-// handled by app.Serve's internal signal.NotifyContext, so signals are not
-// registered twice here; only delegation happens.
+// runServe loads configuration and delegates lifecycle management to app.Serve.
 func runServe(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -101,9 +86,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	cfg, warnings, err := config.Load(*cfgPath)
 	if err != nil {
-		// The logger depends on the config format/level, so a config load
-		// failure is printed as plain text to stderr. Per config's contract
-		// the error contains no secrets.
+		// Logger settings are unavailable when loading the config fails.
 		fmt.Fprintf(stderr, "load config: %v\n", err)
 		return ExitError
 	}
@@ -117,10 +100,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-// runCheck runs the check subcommand: load config, set up the logger, and
-// delegate to app.Check. check is read-only, but depending on the pull
-// policy an image pull can change the Docker image store, so the help states
-// this.
+// runCheck loads configuration and delegates validation to app.Check.
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -143,10 +123,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-// runVersion runs the version subcommand. It prints
-// version/commit/build date/Go version to stdout with fixed keys. Even
-// without ldflags, buildinfo returns explicit values ("dev"/"unknown"), so
-// all items are always printed.
+// runVersion prints build information to stdout.
 func runVersion(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("version", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -161,18 +138,12 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-// addConfigFlag defines the --config flag shared by serve/check. The flag
-// can only appear after the command (before the command it would be an
-// unknown command).
+// addConfigFlag defines the shared --config flag.
 func addConfigFlag(fs *flag.FlagSet) *string {
 	return fs.String("config", DefaultConfigPath, "設定 file の path (既定: "+DefaultConfigPath+")")
 }
 
-// parseArgs parses a subcommand's flags with the standard flag package. On a
-// parse error or extra arguments, the flag package or this function has
-// already printed usage to stderr; the code to exit with is returned
-// (ok=false). ErrHelp (-h/--help) counts as success after usage is printed
-// (ExitOK). Only a successful parse proceeds with ok=true.
+// parseArgs parses subcommand flags and rejects extra arguments.
 func parseArgs(fs *flag.FlagSet, args []string) (code int, ok bool) {
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -188,7 +159,6 @@ func parseArgs(fs *flag.FlagSet, args []string) (code int, ok bool) {
 	return 0, true
 }
 
-// printUsage prints the command list usage.
 func printUsage(w io.Writer) {
 	fmt.Fprintf(w, `Usage: gha-docker-controller <command> [options]
 
@@ -201,12 +171,10 @@ Run "gha-docker-controller <command> -h" for details.
 `)
 }
 
-// printVersionUsage prints the version description. It has no flags.
 func printVersionUsage(fs *flag.FlagSet) {
 	fmt.Fprintf(fs.Output(), "Usage: gha-docker-controller version\n\nversion は build 情報 (version/commit/build date/Go version) を出力する。\n")
 }
 
-// printServeUsage prints the serve flags and description.
 func printServeUsage(fs *flag.FlagSet) {
 	fmt.Fprintf(fs.Output(), `Usage: gha-docker-controller serve [options]
 
@@ -218,8 +186,6 @@ SIGINT/SIGTERM で graceful shutdown する。設定の詳細は config.example.
 	fs.PrintDefaults()
 }
 
-// printCheckUsage prints the check flags and description. It states that an
-// image pull can change the Docker image store.
 func printCheckUsage(fs *flag.FlagSet) {
 	fmt.Fprintf(fs.Output(), `Usage: gha-docker-controller check [options]
 
@@ -234,11 +200,7 @@ read-only ではない点が 1 つある。
 	fs.PrintDefaults()
 }
 
-// newLogger builds a slog logger with the configured format/level. The
-// production default is JSON; text is chosen only when explicitly
-// configured. level is limited to the 4 values debug/info/warn/error
-// (config's static validation already guarantees this) and Source is not
-// added. Log output is fixed to stderr.
+// newLogger builds a logger for the configured format and level.
 func newLogger(format, level string, w io.Writer) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: slogLevel(level)}
 	var handler slog.Handler
@@ -250,9 +212,7 @@ func newLogger(format, level string, w io.Writer) *slog.Logger {
 	return slog.New(handler)
 }
 
-// slogLevel converts a config level name to slog.Level. Config's static
-// validation guarantees the 4 values (debug/info/warn/error), but unknown
-// values defensively fall back to info.
+// slogLevel converts a configuration level to slog.Level.
 func slogLevel(level string) slog.Level {
 	switch level {
 	case config.LogLevelDebug:
@@ -266,8 +226,7 @@ func slogLevel(level string) slog.Level {
 	}
 }
 
-// logWarnings logs config.Load warnings with fixed fields. Per config's
-// contract warnings contain no secrets; they only have path and message.
+// logWarnings writes non-secret configuration warnings.
 func logWarnings(logger *slog.Logger, warnings []config.Warning) {
 	for _, w := range warnings {
 		logger.Warn("config warning", "path", w.Path, "warning", w.Message)

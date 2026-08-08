@@ -66,23 +66,17 @@ type ScaleSetConfig struct {
 
 // DockerConfig is the Docker daemon connection and image pull policy.
 type DockerConfig struct {
-	// Host is an absolute unix:// socket URL.
-	Host string
-	// PullPolicy is the image pull policy.
+	Host       string
 	PullPolicy string
 }
 
 // RunnerConfig is the runner container config.
 type RunnerConfig struct {
-	// Image is a Docker image reference.
 	Image string
-	// HostConfig is passed to Docker without controller-owned defaults.
-	// Nil leaves HostConfig unset so Docker applies its defaults.
-	HostConfig *container.HostConfig
-	// ProvisioningTimeout is the deadline for provisioning.
+	// HostConfig is passed through without controller-owned defaults.
+	HostConfig          *container.HostConfig
 	ProvisioningTimeout Duration
-	// StopTimeout is the grace period when stopping.
-	StopTimeout Duration
+	StopTimeout         Duration
 }
 
 // HealthConfig is the health endpoint config.

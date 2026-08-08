@@ -6,11 +6,7 @@ import (
 	scalesetapi "github.com/actions/scaleset"
 )
 
-// TestValidateRunnerGroup verifies the GetRunnerGroupByName response
-// validation. A nil response, a non-positive ID, a name mismatch, and an
-// empty requested name become errors without panicking; only a group with a
-// matching ID and name is accepted. Validating before dereferencing prevents
-// nil panics.
+// TestValidateRunnerGroup covers malformed and matching API responses.
 func TestValidateRunnerGroup(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -37,11 +33,7 @@ func TestValidateRunnerGroup(t *testing.T) {
 	}
 }
 
-// TestValidateScaleSet verifies the match requirements (ID, name, group ID,
-// a single system label, DisableUpdate=true). Every mismatch including a nil
-// response is an error without auto-update. Both the create-success response
-// and the post-exists reget flow through this validator, so nil is rejected
-// in one place.
+// TestValidateScaleSet covers the exact Scale Set contract.
 func TestValidateScaleSet(t *testing.T) {
 	valid := &scalesetapi.RunnerScaleSet{
 		ID:            42,
@@ -113,12 +105,7 @@ func TestValidateScaleSet(t *testing.T) {
 	}
 }
 
-// TestCheckScaleSetResult verifies the pure result assembly of CheckScaleSet.
-// A nil ss returns a warning that creation permission cannot be proven
-// read-only, without failing. An existing Scale Set is verified against the
-// exact contract by validateScaleSet: a mismatch is an error, a match is
-// accepted without a warning. check uses the same validators as serve's
-// EnsureScaleSet, so check and serve always agree.
+// TestCheckScaleSetResult covers missing, matching, and mismatched sets.
 func TestCheckScaleSetResult(t *testing.T) {
 	group := &scalesetapi.RunnerGroup{ID: 5, Name: "default"}
 	valid := &scalesetapi.RunnerScaleSet{

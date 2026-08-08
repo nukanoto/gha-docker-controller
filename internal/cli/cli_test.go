@@ -1,13 +1,4 @@
-// cli_test.go verifies cli.Run's parser and output contract (subcommand
-// selection, flag parsing, exit codes, stdout/stderr routing) table-driven.
-// Build vars (version/commit/date/go version) are checked both with
-// buildinfo's defaults and with values injected in the test; buildinfo's own
-// tests are merged into this file. No fake servers or stubs are used:
-// stdout/stderr are real bytes.Buffer and config is a real file (t.TempDir).
-// Secrets are given as a real file containing a fixed marker string and
-// verified not to leak into logs/errors. Tests that re-run the real binary
-// as a child process were duplicates of the same assertions and were
-// removed; Run is verified directly here.
+// CLI tests use real buffers and files to cover parsing, output, and secrets.
 package cli
 
 import (
@@ -20,8 +11,7 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/buildinfo"
 )
 
-// runCLI runs Run and returns the exit code, stdout, and stderr. stdout/
-// stderr are real bytes.Buffer, not mocks.
+// runCLI returns Run's exit code and captured streams.
 func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errBuf bytes.Buffer
@@ -29,8 +19,7 @@ func runCLI(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	return code, out.String(), errBuf.String()
 }
 
-// assertStream verifies that stream contains all strings in want. A nil want
-// also verifies that stream is empty.
+// assertStream checks expected output fragments.
 func assertStream(t *testing.T, name, stream string, want []string) {
 	t.Helper()
 	if want == nil {
@@ -46,12 +35,9 @@ func assertStream(t *testing.T, name, stream string, want []string) {
 	}
 }
 
-// TestRun verifies subcommand selection, flag parsing, exit codes, and
-// stdout/stderr routing table-driven. wantCode is the expected exit code;
-// wantOut/wantErr are the strings that stdout/stderr must contain.
+// TestRun covers command parsing and output routing.
 func TestRun(t *testing.T) {
-	// Build vars are package-shared variables overwritten by ldflags -X;
-	// always restore them at subtest end after rewriting.
+	// Restore package-shared build variables after each subtest.
 	injectBuildVars := func(t *testing.T, version, commit, date string) {
 		oldVersion, oldCommit, oldDate := buildinfo.Version, buildinfo.Commit, buildinfo.Date
 		buildinfo.Version, buildinfo.Commit, buildinfo.Date = version, commit, date
@@ -197,16 +183,9 @@ func TestRun(t *testing.T) {
 	}
 }
 
-// TestRun_InvalidConfigDoesNotLeakSecret feeds serve/check a config that
-// loads the secret file body (marker string) and then fails static
-// validation, verifying the exit code, the stderr error content, and the
-// absence of secrets in stdout/stderr all at once. The safeError/logError
-// signatures that cannot take secret values have no leak path, confirmed by
-// the actual error output. The failure branch prints no observed
-// stdout/stderr (prevents re-exposing a secret mixed into the body).
+// TestRun_InvalidConfigDoesNotLeakSecret keeps loaded secret data out of CLI output.
 func TestRun_InvalidConfigDoesNotLeakSecret(t *testing.T) {
-	// Rejecting GITHUB_ACTIONS_FORCE_GHES is a config package contract; it
-	// is disabled here to verify the CLI output contract.
+	// Keep this test on the public GitHub validation path.
 	t.Setenv("GITHUB_ACTIONS_FORCE_GHES", "")
 	secretPath := writeTempFile(t, "private-key.pem",
 		"-----BEGIN RSA PRIVATE KEY-----\n"+secretMarker+"\n-----END RSA PRIVATE KEY-----")

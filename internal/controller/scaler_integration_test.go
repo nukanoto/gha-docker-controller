@@ -1,19 +1,8 @@
 //go:build integration
 
-// scaler_integration_test.go is an integration test of DockerScaler.Recover
-// against a real Docker daemon. Four fixtures verify the Recover boundary:
-// a running/exited managed container of the target Scale Set, a managed
-// container of another Scale Set, and an unmanaged container. Running is
-// protected and included in the current count, exited is cleaned up, and the
-// others are unchanged. Finally the running fixture is stopped, and removal by
-// the production wait watch -> CleanupManaged path plus the count decrease are
-// verified by polling.
-//
-// The GitHub API is never called; the concrete scaleset.Client for the
-// constructor is built with a dummy PAT only (the constructor does no I/O).
-// Fixtures use test-unique labels and are always removed at the end. A missing
-// daemon fails the test; no mocks/stubs/fakes. Existing Docker integration
-// helpers are in another package, so they are not shared.
+// Recover integration tests use a real Docker daemon and cover managed,
+// cross-Scale-Set, and unmanaged container boundaries. The GitHub API is not
+// called; unique fixtures are removed after every test and no mocks are used.
 package controller
 
 import (
@@ -36,21 +25,15 @@ import (
 )
 
 const (
-	// integrationHost is the host of the real Docker daemon (unix:// absolute path contract).
+	// Keep the integration target explicit; DOCKER_HOST is not used.
 	integrationHost = "unix:///var/run/docker.sock"
-	// integrationDefaultImage is the default pinned image when GHDC_TEST_IMAGE
-	// is unset. It exits immediately on an invalid JIT config, so the natural
-	// exit of fixtures is observed deterministically.
+	// The invalid JIT makes the official runner image exit deterministically.
 	integrationDefaultImage = "ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda"
-	// integrationScaleSetName is the test-only name used for container/runner names.
+	// This name is used only to construct fixture names.
 	integrationScaleSetName = "scaler-integration-test"
 )
 
-// TestScalerRecover_ManagedBoundary verifies the protected/cleanup boundary
-// of Recover on a real daemon. The identity uses test-unique random values,
-// so parallel runs and leftover containers from past runs cannot collide. The
-// default image exits naturally ~0.5 s after start, so the running fixture is
-// started last and Recover is called immediately after.
+// TestScalerRecover_ManagedBoundary covers Recover on a real daemon.
 func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	c, err := docker.New(integrationHost, 2*time.Minute)
 	if err != nil {
@@ -61,7 +44,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		t.Fatalf("Docker daemon に接続できませんでした (daemon 不在とみなして fail): %v", err)
 	}
 
-	// Pick a registered runtime, preferring runsc. Fail if neither exists.
+	// Prefer runsc so this test also covers the production runtime path.
 	info, err := c.Info(t.Context())
 	if err != nil {
 		t.Fatalf("Docker Info を取得できませんでした: %v", err)
@@ -74,8 +57,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		t.Fatalf("Docker daemon に runsc も runc も登録されていません: %v", info.Info.Runtimes)
 	}
 
-	// The pinned image can be overridden by env; otherwise use the official
-	// runner digest pin.
+	// Allow local images while keeping the default reproducible.
 	imageRef := os.Getenv("GHDC_TEST_IMAGE")
 	if imageRef == "" {
 		imageRef = integrationDefaultImage
@@ -86,16 +68,14 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		t.Fatalf("image %s を用意できませんでした (GHDC_TEST_IMAGE で local の pinned image を指定できます): %v", imageRef, err)
 	}
 
-	// The unmanaged fixture cannot be made via CreateManaged (it forces managed
-	// labels), so create it with a test-only raw client of the official SDK
-	// (real Moby SDK).
+	// Create the unmanaged control with the raw SDK because CreateManaged adds labels.
 	raw, err := mobyclient.New(mobyclient.WithHost(integrationHost), mobyclient.WithTimeout(2*time.Minute))
 	if err != nil {
 		t.Fatalf("raw Moby client を作成できませんでした: %v", err)
 	}
 	defer raw.Close()
 
-	// Generate unique labels.
+	// Unique identities avoid collisions with parallel or stale fixtures.
 	targetScaleSetID := rand.Int64N(1<<62) + 1
 	runningRunnerID := rand.Int64N(1<<62) + 1
 	exitedRunnerID := rand.Int64N(1<<62) + 1
@@ -105,7 +85,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	exitedIdentity, exitedName := fixtureIdentity(t, targetScaleSetID, exitedRunnerID)
 	otherIdentity, otherName := fixtureIdentity(t, otherScaleSetID, otherRunnerID)
 
-	// Build the concrete scaleset.Client with a dummy PAT (GitHub API is never called).
+	// The constructor does not perform GitHub I/O.
 	cfg := scalerTestConfig(runtime, imageRef)
 	scalesetClient, err := scaleset.New(cfg, "9.9.9-test", "test-commit")
 	if err != nil {
@@ -116,8 +96,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		t.Fatalf("NewDockerScaler が失敗しました: %v", err)
 	}
 
-	// The unique target scale set must have no existing managed containers
-	// (confirms label uniqueness).
+	// Confirm the random identity does not collide with an existing fixture.
 	items, err := c.ListManaged(t.Context(), targetScaleSetID)
 	if err != nil {
 		t.Fatalf("ListManaged が失敗しました: %v", err)
@@ -125,17 +104,12 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	if len(items) != 0 {
 		t.Fatalf("一意な scale-set-id %d に既存 container があります: %+v", targetScaleSetID, items)
 	}
-	// Use Docker defaults for the exited fixture. The running fixture below
-	// uses an explicit restart policy because the pinned image has a shell
-	// command that exits immediately.
+	// Let the exited fixture use Docker defaults; the running fixture overrides them.
 	exitedCfg := *cfg
 	exitedCfg.Runner = cfg.Runner
 	exitedCfg.Runner.HostConfig = nil
 
-	// Never leave anything behind: cleanup uses individual registrations (LIFO)
-	// so one failure does not interrupt the others. First Shutdown joins the
-	// wait goroutines (removes concurrent cleanup races), then fixtures are
-	// removed, and finally zero managed leftovers are confirmed.
+	// Join watches before removing fixtures so cleanup cannot race with them.
 	var fx struct {
 		running, exited, other, unmanaged string
 	}
@@ -162,24 +136,20 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		}
 	})
 
-	// exited fixture: create and start it, then wait for exit (the default
-	// image exits immediately; a non-exiting override image is moved to exited
-	// via managed stop).
+	// The exited fixture must be present when Recover enumerates the daemon.
 	fx.exited = createManagedFixture(t, c, &exitedCfg, exitedIdentity, exitedName)
 	if _, err := c.StartManaged(t.Context(), fx.exited, exitedIdentity); err != nil {
-		// A start error still moves to exited/created, both Recover cleanup targets.
 		t.Logf("exited fixture の StartManaged が error を返しました: %v", err)
 	}
 	waitExited(t, c, fx.exited, exitedIdentity)
 
-	// The other-scale managed and unmanaged fixtures stay created, not started.
+	// Control fixtures stay created and must remain untouched.
 	fx.other = createManagedFixture(t, c, cfg, otherIdentity, otherName)
 	otherState := containerState(t, c, fx.other)
 	fx.unmanaged = createUnmanagedFixture(t, raw, imageRef)
 	unmanagedState := containerState(t, c, fx.unmanaged)
 
-	// The running fixture is started last, and Recover is called immediately
-	// after (deterministic running observation before natural exit).
+	// Start this fixture last so Recover observes it as running.
 	fx.running = createManagedFixture(t, c, cfg, runningIdentity, runningName)
 	if _, err := c.StartManaged(t.Context(), fx.running, runningIdentity); err != nil {
 		t.Fatalf("running fixture を start できませんでした: %v", err)
@@ -188,7 +158,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		t.Fatalf("Recover が失敗しました: %v", err)
 	}
 
-	// 1. running is protected and included in the current count (immediate check).
+	// Running fixtures are protected and counted.
 	s.state.mu.Lock()
 	_, runningProtected := s.state.protected[fx.running]
 	protectedCount := len(s.state.protected)
@@ -198,13 +168,12 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 			protectedCount, runningProtected, s.state.count())
 	}
 
-	// 2. The exited fixture has been removed.
+	// Recover removes exited fixtures.
 	if _, err := c.ContainerInspect(t.Context(), fx.exited, mobyclient.ContainerInspectOptions{}); !cerrdefs.IsNotFound(err) {
 		t.Fatalf("exited fixture が除去されていません (inspect error=%v)", err)
 	}
 
-	// 3. The other-scale managed container keeps its managed labels and its
-	// state is unchanged (ListManaged's filter boundary never touches it).
+	// A different Scale Set is outside the list boundary.
 	otherInspect, err := c.ContainerInspect(t.Context(), fx.other, mobyclient.ContainerInspectOptions{})
 	if err != nil {
 		t.Fatalf("別 Scale Set fixture の inspect が失敗しました: %v", err)
@@ -218,13 +187,12 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		t.Fatalf("別 Scale Set fixture の状態が変化しました: %q → %q", otherState, got)
 	}
 
-	// 4. The unmanaged container's ID/state are unchanged.
+	// Unmanaged containers are outside the controller boundary.
 	if got := containerState(t, c, fx.unmanaged); got != unmanagedState {
 		t.Fatalf("unmanaged fixture の状態が変化しました: %q → %q", unmanagedState, got)
 	}
 
-	// 5. Stop the running fixture with the production managed stop (if already
-	// removed, VerifyManaged returns 404, which counts as success).
+	// Stop the protected fixture through the production path.
 	runningMC, err := c.VerifyManaged(t.Context(), fx.running, runningIdentity)
 	if err != nil {
 		if !cerrdefs.IsNotFound(err) {
@@ -237,9 +205,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		}
 	}
 
-	// 6. Poll until the wait watch observes the exit, removes via CleanupManaged,
-	// the count decreases, and zero managed containers remain (removal runs in
-	// a goroutine, so also wait via ListManaged).
+	// The wait watch removes the stopped fixture asynchronously.
 	deadline := time.Now().Add(2 * time.Minute)
 	for {
 		items, err := c.ListManaged(t.Context(), targetScaleSetID)
@@ -261,7 +227,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	}
 }
 
-// scalerTestConfig builds a config with an explicit user HostConfig.
+// scalerTestConfig builds an integration config with explicit host settings.
 func scalerTestConfig(runtime, imageRef string) *config.Config {
 	return &config.Config{
 		GitHub: config.GitHubConfig{
@@ -289,8 +255,7 @@ func scalerTestConfig(runtime, imageRef string) *config.Config {
 	}
 }
 
-// fixtureIdentity generates the identity and container name of a unique
-// managed fixture.
+// fixtureIdentity generates a unique managed fixture identity.
 func fixtureIdentity(t *testing.T, scaleSetID, runnerID int64) (model.RunnerIdentity, string) {
 	t.Helper()
 	suffix := strconv.FormatInt(runnerID, 16)
@@ -302,8 +267,7 @@ func fixtureIdentity(t *testing.T, scaleSetID, runnerID int64) (model.RunnerIden
 	return model.RunnerIdentity{ScaleSetID: scaleSetID, RunnerID: runnerID, RunnerName: runnerName}, containerName
 }
 
-// createManagedFixture creates a managed fixture through the production path
-// (BuildManagedSpec + CreateManaged).
+// createManagedFixture uses the production spec and create path.
 func createManagedFixture(t *testing.T, c *docker.Client, cfg *config.Config, identity model.RunnerIdentity, containerName string) string {
 	t.Helper()
 	input := docker.ManagedSpecInput{
@@ -329,8 +293,7 @@ func createManagedFixture(t *testing.T, c *docker.Client, cfg *config.Config, id
 	return created.ID
 }
 
-// waitExited waits for the managed fixture to exit (an override image that
-// does not exit within 60 s is moved to exited via managed stop).
+// waitExited waits for exit and stops images that do not exit naturally.
 func waitExited(t *testing.T, c *docker.Client, containerID string, identity model.RunnerIdentity) {
 	t.Helper()
 	waitCtx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
@@ -354,8 +317,7 @@ func waitExited(t *testing.T, c *docker.Client, containerID string, identity mod
 	}
 }
 
-// createUnmanagedFixture creates a container without managed labels via the
-// raw client of the official SDK.
+// createUnmanagedFixture creates a container outside the managed boundary.
 func createUnmanagedFixture(t *testing.T, raw *mobyclient.Client, imageRef string) string {
 	t.Helper()
 	created, err := raw.ContainerCreate(t.Context(), mobyclient.ContainerCreateOptions{
@@ -370,9 +332,7 @@ func createUnmanagedFixture(t *testing.T, raw *mobyclient.Client, imageRef strin
 	return created.ID
 }
 
-// createRawManagedFixture creates a container with the given labels via the
-// raw client of the official SDK. Production CreateManaged cannot produce
-// invalid labels, so it is used to build malformed managed fixtures.
+// createRawManagedFixture creates malformed managed fixtures for recovery tests.
 func createRawManagedFixture(t *testing.T, raw *mobyclient.Client, imageRef string, labels map[string]string) string {
 	t.Helper()
 	created, err := raw.ContainerCreate(t.Context(), mobyclient.ContainerCreateOptions{
@@ -388,13 +348,7 @@ func createRawManagedFixture(t *testing.T, raw *mobyclient.Client, imageRef stri
 	return created.ID
 }
 
-// TestScalerRecover_MalformedLabelShutdownJoinsWatch verifies on a real
-// daemon that, even when Recover returns an error at a later malformed
-// container, Shutdown joins and completes the watches started before that.
-// A running fixture is created first to start protected + watch; then a
-// malformed fixture (non-integer runner-id label) makes Recover fail. It
-// confirms Shutdown returns within a bounded context (no watch-join
-// deadlock) and that no shutdown-originated fatal reaches ErrCh.
+// TestScalerRecover_MalformedLabelShutdownJoinsWatch covers partial recovery.
 func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 	c, err := docker.New(integrationHost, 2*time.Minute)
 	if err != nil {
@@ -455,15 +409,12 @@ func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 		cleanupManagedFixture(t, c, running, runningIdentity)
 	})
 
-	// Create and start the running fixture first, aiming for Recover to start
-	// protected + watch. The default image exits immediately, so call Recover
-	// right after start.
+	// Start a valid fixture before the malformed one to create a watch.
 	running = createManagedFixture(t, c, cfg, runningIdentity, runningName)
 	if _, err := c.StartManaged(t.Context(), running, runningIdentity); err != nil {
 		t.Fatalf("running fixture を start できませんでした: %v", err)
 	}
-	// malformed fixture: the runner-id label is a non-integer, so
-	// RefreshManaged's identityFromObserved returns ManagedGuardError.
+	// A non-integer runner ID must fail recovery without unsafe cleanup.
 	malformed = createRawManagedFixture(t, raw, imageRef, map[string]string{
 		model.ManagedLabelKey:    model.ManagedLabelValue,
 		model.ScaleSetIDLabelKey: strconv.FormatInt(targetScaleSetID, 10),
@@ -475,9 +426,7 @@ func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 		t.Fatalf("malformed label があるのに Recover が error を返しませんでした")
 	}
 
-	// Even after the mid-way failure, Shutdown joins the watches and completes
-	// within a bounded context. Join timeout and cleanup failures return as
-	// errors, and nothing is sent to ErrCh either.
+	// Partial recovery must still allow a bounded, joined shutdown.
 	sctx, scancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if err := s.Shutdown(sctx); err != nil {
 		t.Fatalf("Shutdown が error を返しました: %v", err)
@@ -490,8 +439,7 @@ func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 	}
 }
 
-// containerState returns the current state of the container. Missing
-// containers fail the test.
+// containerState returns a fixture state.
 func containerState(t *testing.T, c *docker.Client, containerID string) string {
 	t.Helper()
 	inspect, err := c.ContainerInspect(t.Context(), containerID, mobyclient.ContainerInspectOptions{})
@@ -501,10 +449,7 @@ func containerState(t *testing.T, c *docker.Client, containerID string) string {
 	return string(inspect.Container.State.Status)
 }
 
-// cleanupManagedFixture removes a test-created managed container via the
-// production removal path (VerifyManaged + CleanupManaged, which always
-// re-checks labels freshly). 404 counts as success. It uses its own bounded
-// context because it runs from cleanup.
+// cleanupManagedFixture removes a managed fixture through the production path.
 func cleanupManagedFixture(t *testing.T, c *docker.Client, containerID string, identity model.RunnerIdentity) {
 	t.Helper()
 	if containerID == "" {
@@ -524,8 +469,7 @@ func cleanupManagedFixture(t *testing.T, c *docker.Client, containerID string, i
 	}
 }
 
-// removeUnmanagedFixture removes a test-created unmanaged container via the
-// official SDK.
+// removeUnmanagedFixture removes a fixture outside the managed path.
 func removeUnmanagedFixture(t *testing.T, raw *mobyclient.Client, containerID string) {
 	t.Helper()
 	if containerID == "" {

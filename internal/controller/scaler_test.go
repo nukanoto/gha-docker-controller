@@ -1,6 +1,4 @@
-// scaler_test.go verifies only the pure parts of DockerScaler with table
-// tests: the desired formula, scale-down selection (oldest first), and state
-// map transitions. No Docker/GitHub I/O happens. No mocks, stubs, or fakes.
+// These tests cover scaler demand and state transitions without external I/O.
 package controller
 
 import (
@@ -19,16 +17,12 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// ref builds a test runnerRef. The container ID is derived from the name and
-// the runner ID is a deterministic stand-in (the name length). Tests never
-// assert on the runner ID value.
+// ref uses deterministic IDs because these tests exercise state only.
 func ref(name string) runnerRef {
 	return runnerRef{containerID: "c" + name, runnerID: int64(len(name)), runnerName: name}
 }
 
-// stateWith builds a test state from idle/busy/protected name lists. idle
-// keeps the given order; busy/protected are maps. It returns a pointer to
-// avoid copying the mutex.
+// stateWith preserves idle order and returns a pointer to avoid copying a mutex.
 func stateWith(idle, busy, protected []string) *runnerState {
 	st := newRunnerState()
 	for _, n := range idle {
@@ -43,8 +37,7 @@ func stateWith(idle, busy, protected []string) *runnerState {
 	return &st
 }
 
-// stateNames returns the name lists of the state for assertions. idle keeps
-// its order; busy/protected are sorted to be comparable.
+// stateNames preserves idle order and sorts map-backed states for comparison.
 func stateNames(st *runnerState) (idle, busy, protected []string) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -62,9 +55,7 @@ func stateNames(st *runnerState) (idle, busy, protected []string) {
 	return idle, busy, protected
 }
 
-// TestDesiredRunnerCount verifies the desired formula
-// clamp(max(min, jobs), 0, max) with table tests. The scaler uses this
-// formula as its single source of demand.
+// TestDesiredRunnerCount covers demand clamping.
 func TestDesiredRunnerCount(t *testing.T) {
 	tests := []struct {
 		name string
@@ -93,8 +84,7 @@ func TestDesiredRunnerCount(t *testing.T) {
 	}
 }
 
-// TestRunnerStateCount verifies that count is the total of idle, busy, and
-// protected, with table tests.
+// TestRunnerStateCount covers all runner state categories.
 func TestRunnerStateCount(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -119,9 +109,7 @@ func TestRunnerStateCount(t *testing.T) {
 	}
 }
 
-// TestRunnerStateMarkBusy verifies the JobStarted transition with table
-// tests. Only a known idle runner moves to busy; unknown names return false
-// without changes.
+// TestRunnerStateMarkBusy covers the idle-to-busy transition.
 func TestRunnerStateMarkBusy(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -153,9 +141,7 @@ func TestRunnerStateMarkBusy(t *testing.T) {
 	}
 }
 
-// TestRunnerStateTakeOwnership verifies ownership acquisition by JobCompleted
-// and wait exit with table tests. Removal is busy-first; unknown names return
-// false without changes.
+// TestRunnerStateTakeOwnership covers cleanup ownership acquisition.
 func TestRunnerStateTakeOwnership(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -191,9 +177,7 @@ func TestRunnerStateTakeOwnership(t *testing.T) {
 	}
 }
 
-// TestRunnerStateScaleDownIdle verifies scale-down selection with table
-// tests. Only up to limit idle runners are removed, oldest first; busy and
-// protected are never targets.
+// TestRunnerStateScaleDownIdle covers oldest-first idle selection.
 func TestRunnerStateScaleDownIdle(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -242,9 +226,7 @@ func TestRunnerStateScaleDownIdle(t *testing.T) {
 	}
 }
 
-// TestRunnerStateProtected verifies registration and removal of protected
-// runners after restart, with table tests. addProtected includes them in
-// count; takeProtected removes by container ID.
+// TestRunnerStateProtected covers restart-adopted runners.
 func TestRunnerStateProtected(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -275,9 +257,7 @@ func TestRunnerStateProtected(t *testing.T) {
 	}
 }
 
-// TestRunnerStateTakeAll verifies the shutdown bulk removal with table tests.
-// takeAllIdle and takeAllBusy empty the state and the change is reflected in
-// count.
+// TestRunnerStateTakeAll covers shutdown ownership transfer.
 func TestRunnerStateTakeAll(t *testing.T) {
 	st := stateWith([]string{"a", "b"}, []string{"c"}, []string{"p"})
 	allIdle := st.takeAllIdle()
@@ -285,7 +265,6 @@ func TestRunnerStateTakeAll(t *testing.T) {
 	if len(allIdle) != 2 || len(allBusy) != 1 {
 		t.Fatalf("takeAllIdle() が %d 個、takeAllBusy() が %d 個, want 2 個と 1 個", len(allIdle), len(allBusy))
 	}
-	// protected stays; idle/busy disappear from count.
 	if st.count() != 1 {
 		t.Fatalf("全量除去後の count() = %d, want 1 (protected のみ)", st.count())
 	}
@@ -295,10 +274,7 @@ func TestRunnerStateTakeAll(t *testing.T) {
 	}
 }
 
-// TestScaler_NilEventReturnsFixedError verifies that a nil JobStarted /
-// JobCompleted event returns a fixed error and does not change state. The
-// official listener passes events as pointers, so nil is a protocol violation
-// that becomes fatal through the listener.
+// TestScaler_NilEventReturnsFixedError covers invalid listener events.
 func TestScaler_NilEventReturnsFixedError(t *testing.T) {
 	s := &DockerScaler{state: newRunnerState()}
 	if err := s.HandleJobStarted(context.Background(), nil); err == nil || err.Error() != "controller: nil job started event" {
@@ -312,10 +288,7 @@ func TestScaler_NilEventReturnsFixedError(t *testing.T) {
 	}
 }
 
-// TestRunnerRefFromLabels verifies runnerRef restoration from labels with
-// table tests. The runner-id label must be a positive base-10 integer;
-// non-integers, 0, and negatives are malformed and return an error (Recover
-// becomes fatal without changing the container).
+// TestRunnerRefFromLabels covers malformed runner IDs.
 func TestRunnerRefFromLabels(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -348,11 +321,7 @@ func TestRunnerRefFromLabels(t *testing.T) {
 	}
 }
 
-// TestScaler_WatchStartShutdownRace verifies under -race that startWatch's
-// wg.Add and Shutdown's wg.Wait running concurrently do not misuse the
-// WaitGroup, and that shutdown joins every watch. The test cancels watchCtx
-// first so watch goroutines never connect to a real Docker socket (real
-// socket connections are excluded from unit tests).
+// TestScaler_WatchStartShutdownRace protects the WaitGroup registration rule.
 func TestScaler_WatchStartShutdownRace(t *testing.T) {
 	dc, err := docker.New("unix:///tmp/ghadc-unit-test-nonexistent.sock", time.Second)
 	if err != nil {
@@ -368,7 +337,7 @@ func TestScaler_WatchStartShutdownRace(t *testing.T) {
 		watchCancel:    watchCancel,
 		state:          newRunnerState(),
 	}
-	// Cancel first so the watch goroutines never connect to the socket.
+	// The unit test must not connect to a real Docker socket.
 	s.watchCancel()
 
 	var wg sync.WaitGroup
@@ -387,8 +356,6 @@ func TestScaler_WatchStartShutdownRace(t *testing.T) {
 	}()
 	wg.Wait()
 
-	// startWatch after shutdown is a no-op without wg.Add, and a second
-	// Shutdown completes immediately (no deadlock on double call).
 	s.startWatch(ref("after-shutdown"), false)
 	if !s.watchStopped {
 		t.Fatalf("Shutdown 後に watchStopped が false のままです")
@@ -401,10 +368,7 @@ func TestScaler_WatchStartShutdownRace(t *testing.T) {
 	}
 }
 
-// TestScaler_ShutdownTimesOutWithoutCleanup verifies that Shutdown returns
-// ErrShutdownJoinTimeout without cleanup when watch join exceeds the deadline,
-// using a real wg and real ctx. On timeout, takeAllIdle is not called, so the
-// idle refs stay in state (not cleaned up).
+// TestScaler_ShutdownTimesOutWithoutCleanup covers the join timeout boundary.
 func TestScaler_ShutdownTimesOutWithoutCleanup(t *testing.T) {
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	s := &DockerScaler{
@@ -416,7 +380,6 @@ func TestScaler_ShutdownTimesOutWithoutCleanup(t *testing.T) {
 	}
 	s.state.addIdle(ref("keep"))
 
-	// Hold watch completion behind a gate.
 	release := make(chan struct{})
 	s.wg.Add(1)
 	go func() {
@@ -430,7 +393,6 @@ func TestScaler_ShutdownTimesOutWithoutCleanup(t *testing.T) {
 	if !errors.Is(err, ErrShutdownJoinTimeout) {
 		t.Fatalf("watch 未完了なのに Shutdown が ErrShutdownJoinTimeout を返しませんでした: %v", err)
 	}
-	// On timeout, cleanup does not run and the idle refs stay in state.
 	if got := s.state.count(); got != 1 {
 		t.Fatalf("timeout 時に state が変更されました: count=%d (want 1)", got)
 	}
@@ -438,7 +400,6 @@ func TestScaler_ShutdownTimesOutWithoutCleanup(t *testing.T) {
 		t.Fatalf("timeout 後も watchStopped が false のままです")
 	}
 
-	// Release the gate and confirm the watch goroutine exits (leak prevention).
 	close(release)
 	done := make(chan struct{})
 	go func() {
@@ -452,9 +413,7 @@ func TestScaler_ShutdownTimesOutWithoutCleanup(t *testing.T) {
 	}
 }
 
-// TestScaler_ShutdownReturnsTrueWhenWatchDrains verifies that Shutdown
-// returns nil after every watch completes. With empty state, cleanup involves
-// no I/O.
+// TestScaler_ShutdownReturnsTrueWhenWatchDrains covers a drained shutdown.
 func TestScaler_ShutdownReturnsTrueWhenWatchDrains(t *testing.T) {
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	defer watchCancel()
@@ -470,10 +429,7 @@ func TestScaler_ShutdownReturnsTrueWhenWatchDrains(t *testing.T) {
 	}
 }
 
-// TestScaler_ShutdownReturnsCleanupErrors verifies that Shutdown returns
-// idle/busy cleanup failures via errors.Join and does not notify errCh.
-// Cleanup fails because the real client's inspect connects to a nonexistent
-// socket (real Docker socket connections are excluded from unit tests).
+// TestScaler_ShutdownReturnsCleanupErrors covers joined cleanup failures.
 func TestScaler_ShutdownReturnsCleanupErrors(t *testing.T) {
 	dc, err := docker.New("unix:///tmp/ghadc-unit-test-nonexistent.sock", time.Second)
 	if err != nil {
@@ -490,7 +446,6 @@ func TestScaler_ShutdownReturnsCleanupErrors(t *testing.T) {
 		watchCancel:    watchCancel,
 		state:          newRunnerState(),
 	}
-	// Lead 3 idle and busy refs into cleanup failure.
 	s.state.addIdle(ref("idle-1"))
 	s.state.addIdle(ref("busy-1"))
 	s.state.addIdle(ref("idle-2"))
@@ -504,11 +459,9 @@ func TestScaler_ShutdownReturnsCleanupErrors(t *testing.T) {
 	if errors.Is(err, ErrShutdownJoinTimeout) {
 		t.Fatalf("cleanup 失敗が join timeout と誤分類されました: %v", err)
 	}
-	// The 3 refs' cleanup errors are joined.
 	if got := strings.Count(err.Error(), "shutdown cleanup container"); got != 3 {
 		t.Fatalf("Join された cleanup error の数が期待と異なります: %d (%v)", got, err)
 	}
-	// errCh is not notified (returning to the caller is the only path).
 	select {
 	case waitErr := <-s.ErrCh():
 		t.Fatalf("Shutdown が errCh へ error を通知しました: %v", waitErr)
@@ -516,10 +469,7 @@ func TestScaler_ShutdownReturnsCleanupErrors(t *testing.T) {
 	}
 }
 
-// TestScaler_CleanupContextIsFresh verifies that cleanupContext returns a
-// fresh context derived from Background. It is a regression test that
-// cancelling watchCtx or the handler ctx does not interrupt cleanup, and the
-// deadline equals cleanupTimeout.
+// TestScaler_CleanupContextIsFresh covers independent cleanup deadlines.
 func TestScaler_CleanupContextIsFresh(t *testing.T) {
 	s := &DockerScaler{cleanupTimeout: 200 * time.Millisecond}
 	cctx, ccancel := s.cleanupContext()
@@ -536,9 +486,7 @@ func TestScaler_CleanupContextIsFresh(t *testing.T) {
 	}
 }
 
-// TestScaler_ReleaseWatchOwnership verifies that idle and protected ownership
-// can be released so an externally removed container is not counted in
-// capacity.
+// TestScaler_ReleaseWatchOwnership covers external removal bookkeeping.
 func TestScaler_ReleaseWatchOwnership(t *testing.T) {
 	idle := ref("idle-runner")
 	protected := ref("protected-runner")

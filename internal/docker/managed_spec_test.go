@@ -24,8 +24,7 @@ func testConfig(t *testing.T, runtime ...string) *config.Config {
 		},
 	}
 	if len(runtime) == 1 {
-		// Restarting keeps the lifecycle fixture observable after an invalid JIT
-		// configuration makes the runner process exit.
+		// Keep lifecycle fixtures observable after invalid JIT makes the runner exit.
 		cfg.Runner.HostConfig = &container.HostConfig{
 			Runtime:       runtime[0],
 			NetworkMode:   "bridge",

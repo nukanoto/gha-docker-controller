@@ -1,21 +1,4 @@
-// Package health provides the HTTP server for /livez and /readyz. Readiness
-// is decided from the session and listener running states held by Store.
-//
-//	GET /livez  Always 200. Means the process can answer HTTP.
-//	GET /readyz 200 when both session and listener are running
-//	            (store.Ready), otherwise 503.
-//
-// Both endpoints only return the fixed minimal JSON bodies {"status":"ok"}
-// or {"status":"unavailable"}; no internal information is included. The not
-// ready log is also just the fixed message "readiness check failed". Unknown
-// paths return 404, and methods other than GET/HEAD return 405 (see the
-// handler comment for method policy details).
-//
-// Server lifecycle is handled by New / Start / Shutdown. Start binds
-// synchronously and returns an error without starting the goroutine on
-// failure. Shutdown does a graceful shutdown and then joins the serve
-// goroutine before returning. The serve goroutine's exit error is delivered
-// once on ErrCh; nil means a normal exit.
+// Package health provides the /livez and /readyz HTTP endpoints.
 
 package health
 
@@ -31,70 +14,61 @@ import (
 	"time"
 )
 
-// readHeaderTimeout is the http.Server deadline for reading the request
-// header. Health endpoints only answer immediately, so connections that take
-// long to send headers are cut quickly to avoid head-of-line blocking.
+// readHeaderTimeout limits slow request headers on the small health server.
 const readHeaderTimeout = 5 * time.Second
 
-// Store holds the running states of the session and listener.
+// Store holds session and listener readiness state.
 type Store struct {
 	mu              sync.Mutex
 	sessionRunning  bool
 	listenerRunning bool
 }
 
-// NewStore returns a store in the not-ready state.
+// NewStore returns a not-ready store.
 func NewStore() *Store { return &Store{} }
 
-// SetSessionRunning updates the message session state.
+// SetSessionRunning updates session readiness.
 func (s *Store) SetSessionRunning(running bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessionRunning = running
 }
 
-// SetListenerRunning updates the listener state.
+// SetListenerRunning updates listener readiness.
 func (s *Store) SetListenerRunning(running bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.listenerRunning = running
 }
 
-// Ready reports whether both the session and listener are running.
+// Ready reports whether both dependencies are running.
 func (s *Store) Ready() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.sessionRunning && s.listenerRunning
 }
 
-// Server is the HTTP server providing /livez and /readyz. New creates it,
-// Start starts it, and Shutdown ends it.
+// Server provides /livez and /readyz.
 type Server struct {
 	addr   string
 	store  *Store
 	logger *slog.Logger
 
-	// mu protects the lifecycle fields below. HTTP handlers do not use this
-	// mutex.
+	// HTTP handlers do not access these lifecycle fields.
 	mu       sync.Mutex
 	srv      *http.Server // valid after a successful Start
 	ln       net.Listener // valid after a successful Start
 	started  bool         // whether Start succeeded
 	shutdown bool         // whether Shutdown has run at least once
 
-	// errCh is a buffered channel where the serve goroutine writes its exit
-	// error exactly once. nil means a normal exit via graceful shutdown;
-	// buffered 1 lets the goroutine finish even without a reader.
+	// The buffer lets serve finish even when no reader remains.
 	errCh chan error
-	// doneCh is closed when the serve goroutine exits. Only Shutdown reads
-	// it, so it is never double-read together with errCh.
+	// doneCh is the join signal for Shutdown.
 	doneCh chan struct{}
 }
 
-// New builds a Server. addr is the host:port listen address; the default is
-// config's DefaultHealthListen (127.0.0.1:8080). A nil store returns an
-// error (prevents a readiness panic after startup). A nil logger discards
-// logs.
+// New builds a health server. A nil store is rejected because readiness needs
+// it after startup.
 func New(addr string, store *Store, logger *slog.Logger) (*Server, error) {
 	if store == nil {
 		return nil, errors.New("health: nil store")
@@ -111,10 +85,7 @@ func New(addr string, store *Store, logger *slog.Logger) (*Server, error) {
 	}, nil
 }
 
-// Start actually binds with net.Listen before starting the serve goroutine.
-// A bind failure (address in use, insufficient permission, etc.) is returned
-// synchronously as an error and no goroutine is started. A second Start
-// returns an error.
+// Start binds the address synchronously, then starts serving.
 func (s *Server) Start() error {
 	s.mu.Lock()
 	if s.started {
@@ -139,9 +110,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// serve is the goroutine body started by Start. After Serve exits it writes
-// an error to errCh exactly once (ErrServerClosed is converted to nil as a
-// normal exit), then closes doneCh.
+// serve sends one exit result and closes doneCh.
 func (s *Server) serve() {
 	err := s.srv.Serve(s.ln)
 	if errors.Is(err, http.ErrServerClosed) {
@@ -152,8 +121,7 @@ func (s *Server) serve() {
 	close(s.doneCh)
 }
 
-// Addr returns the bound listen address. Returns nil before Start. Useful
-// for tests that specify 127.0.0.1:0 to get the actual port.
+// Addr returns the bound address, or nil before Start.
 func (s *Server) Addr() net.Addr {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,20 +131,12 @@ func (s *Server) Addr() net.Addr {
 	return s.ln.Addr()
 }
 
-// ErrCh returns the channel that receives the serve goroutine's exit error.
-// Exactly one value arrives on goroutine exit; nil means a normal exit via
-// graceful shutdown. Shutdown does not consume this channel, so app's select
-// is not a double read.
+// ErrCh returns the single serve-goroutine result channel.
 func (s *Server) ErrCh() <-chan error {
 	return s.errCh
 }
 
-// Shutdown runs a graceful shutdown and waits for the serve goroutine to
-// finish before returning. ctx must always have a deadline. If connections
-// do not all close by the deadline, it force-closes to reliably end the
-// goroutine and returns a deadline exceeded error. If the serve goroutine
-// has already exited, it just joins. Calls before Start and double calls
-// return an error. ErrCh is not consumed.
+// Shutdown gracefully stops the server and joins its goroutine.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	if !s.started {
@@ -191,15 +151,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	srv := s.srv
 	s.mu.Unlock()
 
-	// If the serve goroutine has already exited, just join.
 	select {
 	case <-s.doneCh:
 	default:
 		if err := srv.Shutdown(ctx); err != nil {
-			// On deadline exceeded, force-close to reliably end the serve
-			// goroutine. Serve after Close returns ErrServerClosed, so nil
-			// arrives on errCh and the ErrCh contract (nil = normal exit)
-			// holds.
+			// Force-close so Shutdown never leaves the serve goroutine behind.
 			_ = srv.Close()
 			<-s.doneCh
 			s.logger.Info("health server stopped")
@@ -211,10 +167,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// handler returns a ServeMux registering only /livez and /readyz. The method
-// policy allows only GET/HEAD; ServeMux's method patterns (Go 1.22+) return
-// 404 for unregistered paths and 405 for disallowed methods as standard
-// plain text.
+// handler registers only the two health endpoints.
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /livez", s.handleLivez)
@@ -222,15 +175,12 @@ func (s *Server) handler() http.Handler {
 	return mux
 }
 
-// handleLivez returns liveness. As long as the HTTP server can answer, the
-// process is alive, so it always returns 200 regardless of readiness.
+// handleLivez reports that the HTTP server can answer.
 func (s *Server) handleLivez(w http.ResponseWriter, r *http.Request) {
 	writeStatus(w, http.StatusOK, true)
 }
 
-// handleReadyz returns the readiness verdict. When both session and listener
-// are running (store.Ready), it returns 200 {"status":"ok"}; otherwise 503
-// {"status":"unavailable"}. The log only outputs the fixed message.
+// handleReadyz reports whether the session and listener are running.
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	if s.store.Ready() {
 		writeStatus(w, http.StatusOK, true)
@@ -240,8 +190,6 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	writeStatus(w, http.StatusServiceUnavailable, false)
 }
 
-// writeStatus writes the fixed minimal JSON {"status":"ok"} or
-// {"status":"unavailable"}.
 func writeStatus(w http.ResponseWriter, code int, ok bool) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)

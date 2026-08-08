@@ -10,22 +10,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Warning is a notice found while loading config that contains no secret.
+// Warning is a non-secret configuration warning.
 type Warning struct {
-	// Path is the path of the affected config field.
-	Path string
-	// Message is the body of the notice. It never contains secret values.
+	Path    string
 	Message string
 }
 
-// Load reads the config file with strict YAML and runs, in order, default
-// application, secret file loading, normalization and static validation, and
-// returns the runtime config. The returned Warnings contain no secrets.
-// Dynamic connectivity checks against Docker/GitHub are not performed.
+// Load parses, normalizes, and statically validates the configuration.
 func Load(path string) (*Config, []Warning, error) {
-	// GITHUB_ACTIONS_FORCE_GHES points the runner at GHES. This daemon
-	// supports GitHub.com only, so the variable is rejected as a likely
-	// misconfiguration.
+	// This daemon supports GitHub.com only; reject the GHES override early.
 	if v := os.Getenv("GITHUB_ACTIONS_FORCE_GHES"); v != "" {
 		return nil, nil, fmt.Errorf("GITHUB_ACTIONS_FORCE_GHES environment variable must not be set; only GitHub.com is supported")
 	}
@@ -51,8 +44,7 @@ func Load(path string) (*Config, []Warning, error) {
 	return c, secretWarnings, nil
 }
 
-// decodeYAML enforces a strict decode and a single document. Unknown fields,
-// duplicated sections and any document after the first are all rejected.
+// decodeYAML rejects unknown fields and multiple YAML documents.
 func decodeYAML(data []byte) (*rawConfig, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -73,15 +65,13 @@ func decodeYAML(data []byte) (*rawConfig, error) {
 	return &raw, nil
 }
 
-// resolve applies defaults and normalization. It only fixes up the syntax;
-// semantically invalid values become errors with a field path in validate.
+// resolve applies defaults and trims user-provided strings.
 func resolve(raw *rawConfig) (*Config, error) {
 	if raw == nil {
 		return nil, fmt.Errorf("empty config")
 	}
 	c := &Config{}
 
-	// GitHub
 	c.GitHub.URL = strings.TrimRight(optionalString(raw.GitHub.URL, DefaultGitHubURL), "/")
 	c.GitHub.Scope = raw.GitHub.Scope
 	c.GitHub.Owner = strings.TrimSpace(raw.GitHub.Owner)
@@ -94,17 +84,14 @@ func resolve(raw *rawConfig) (*Config, error) {
 		}
 	}
 
-	// Scale Set
 	c.ScaleSet.Name = strings.TrimSpace(raw.ScaleSet.Name)
 	c.ScaleSet.RunnerGroup = strings.TrimSpace(optionalString(raw.ScaleSet.RunnerGroup, DefaultRunnerGroup))
 	c.ScaleSet.MinRunners = optionalInt(raw.ScaleSet.MinRunners, 0)
 	c.ScaleSet.MaxRunners = optionalInt(raw.ScaleSet.MaxRunners, 0)
 
-	// Docker
 	c.Docker.Host = normalizeDockerHost(optionalString(raw.Docker.Host, DefaultDockerHost))
 	c.Docker.PullPolicy = strings.TrimSpace(optionalString(raw.Docker.PullPolicy, DefaultPullPolicy))
 
-	// Runner
 	c.Runner.Image = strings.TrimSpace(raw.Runner.Image)
 	if raw.Runner.HostConfig != nil {
 		c.Runner.HostConfig = &raw.Runner.HostConfig.HostConfig
@@ -112,7 +99,6 @@ func resolve(raw *rawConfig) (*Config, error) {
 	c.Runner.ProvisioningTimeout = optionalDuration(raw.Runner.ProvisioningTimeout, Duration(DefaultProvisioningTimeout))
 	c.Runner.StopTimeout = optionalDuration(raw.Runner.StopTimeout, Duration(DefaultStopTimeout))
 
-	// Health / Shutdown / Log
 	c.Health.Listen = strings.TrimSpace(optionalString(raw.Health.Listen, DefaultHealthListen))
 	c.Shutdown.BusyPolicy = strings.TrimSpace(optionalString(raw.Shutdown.BusyPolicy, DefaultShutdownPolicy))
 	c.Shutdown.Grace = optionalDuration(raw.Shutdown.Grace, Duration(DefaultShutdownGrace))
@@ -122,14 +108,9 @@ func resolve(raw *rawConfig) (*Config, error) {
 	return c, nil
 }
 
-// loadSecrets reads the App private key file and takes the PAT from the
-// GITHUB_TOKEN environment variable. It handles the mutual exclusion of App
-// and GITHUB_TOKEN, rejects symlinks and non-regular private key files, and
-// warns about loose permissions. Secret bodies never appear in errors or
-// warnings.
+// loadSecrets loads exactly one authentication method without exposing its
+// value in errors or warnings.
 func loadSecrets(c *Config) ([]Warning, error) {
-	// The PAT is read from the environment at Load time with surrounding
-	// whitespace trimmed. Its value never appears in errors or warnings.
 	token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 	switch {
 	case c.GitHub.App == nil && token == "":
@@ -139,7 +120,6 @@ func loadSecrets(c *Config) ([]Warning, error) {
 	}
 	var warnings []Warning
 	if c.GitHub.App != nil {
-		// A missing file becomes an error with its path before validation.
 		if c.GitHub.App.PrivateKeyFile == "" {
 			return nil, fmt.Errorf("github.app.privateKeyFile: required")
 		}
@@ -152,8 +132,7 @@ func loadSecrets(c *Config) ([]Warning, error) {
 			return nil, fmt.Errorf("github.app.privateKeyFile: secret file is empty")
 		}
 		c.GitHub.App.PrivateKey = trimmed
-		// Any group/other permission bit (0077) triggers a warning. Not only
-		// read but also write/execute can expose or tamper with the secret.
+		// Group/other permissions can expose or tamper with the secret.
 		if mode.Perm()&0o077 != 0 {
 			warnings = append(warnings, Warning{
 				Path:    "github.app.privateKeyFile",
@@ -166,8 +145,7 @@ func loadSecrets(c *Config) ([]Warning, error) {
 	return warnings, nil
 }
 
-// normalizeDockerHost trims trailing "/" from the unix socket path.
-// Format validation is done by validate.
+// normalizeDockerHost removes trailing slashes from unix socket URLs.
 func normalizeDockerHost(host string) string {
 	if strings.HasPrefix(host, "unix://") {
 		return "unix://" + strings.TrimRight(strings.TrimPrefix(host, "unix://"), "/")

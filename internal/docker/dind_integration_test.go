@@ -1,19 +1,8 @@
 //go:build integration
 
-// dind_integration_test.go verifies a dind image with a user-provided
-// HostConfig against a real Docker daemon and runsc. It covers only the
-// public production paths (BuildManagedSpec + CreateManaged,
-// inspect/start/wait/log); no mock/fake/stub is used. A missing daemon is a
-// fail; a missing runsc registration is a skip with a reason. The image is
-// the pinned digest of GHDC_TEST_DIND_IMAGE, or is built from
-// images/dind-runner with the SDK ImageBuild.
-//
-// The inner dockerd is verified only through container logs / wait, never
-// via exec. Without credentials the runner exits immediately on the invalid
-// JIT, so "receiving a job" is left to the opt-in E2E. t.Cleanup always
-// removes containers after a fresh managed guard check, using the test-only
-// forced official SDK removal. The unmanaged sentinel is verified with the
-// helper shared with standard.
+// DinD integration uses real Docker/runsc and production container paths. The
+// inner daemon is verified through logs and wait, never exec; invalid JIT keeps
+// the test free of credentials and GitHub I/O.
 package docker
 
 import (
@@ -45,18 +34,13 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// Env vars for the dind test.
 const (
-	// dindImageEnv is the pinned-digest dind image.
-	dindImageEnv = "GHDC_TEST_DIND_IMAGE"
-	// dindContextEnv overrides the build context of images/dind-runner.
+	dindImageEnv   = "GHDC_TEST_DIND_IMAGE"
 	dindContextEnv = "GHDC_TEST_DIND_CONTEXT"
-	// dindTimeoutEnv is the wait timeout for natural/signal exit. Default 7 minutes.
 	dindTimeoutEnv = "GHDC_TEST_DIND_TIMEOUT"
 )
 
-// buildDindImage packs the context into a tar, runs SDK ImageBuild and
-// checks the build stream errors to the end.
+// buildDindImage builds the test image and drains the build response.
 func buildDindImage(t *testing.T, c *Client, contextDir, tag string) {
 	t.Helper()
 	buildContext, err := tarDindContext(contextDir)
@@ -93,8 +77,7 @@ func buildDindImage(t *testing.T, c *Client, contextDir, tag string) {
 	}
 }
 
-// tarDindContext packs the Dockerfile and entrypoint.sh into a tar
-// archive.
+// tarDindContext creates the minimal build context.
 func tarDindContext(contextDir string) (io.Reader, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
@@ -113,8 +96,7 @@ func tarDindContext(contextDir string) (io.Reader, error) {
 	return &buf, tw.Close()
 }
 
-// prepareDindImage EnsureImages the pinned digest, or builds
-// images/dind-runner (the build is removed best-effort).
+// prepareDindImage pulls the configured image or builds the local context.
 func prepareDindImage(t *testing.T, c *Client) (imageRef string) {
 	t.Helper()
 	if ref := os.Getenv(dindImageEnv); ref != "" {
@@ -135,7 +117,7 @@ func prepareDindImage(t *testing.T, c *Client) (imageRef string) {
 	return tag
 }
 
-// removeTestImage removes the built image best-effort. A 404 counts as success.
+// removeTestImage removes a locally built image when possible.
 func removeTestImage(t *testing.T, c *Client, ref string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -145,10 +127,7 @@ func removeTestImage(t *testing.T, c *Client, ref string) {
 	}
 }
 
-// forceRemoveTestContainer fresh-inspects a test-created container,
-// exact-re-checks the managed labels and then force-removes it with the
-// official SDK (a 404 counts as success). It is the build-tag test-only
-// exception to the production ContainerRemove uniqueness.
+// forceRemoveTestContainer is the test-only fallback after a fresh label check.
 func forceRemoveTestContainer(t *testing.T, c *Client, containerID string, identity model.RunnerIdentity) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -168,14 +147,13 @@ func forceRemoveTestContainer(t *testing.T, c *Client, containerID string, ident
 	}
 }
 
-// verifyDindInspectFields verifies the explicit HostConfig with inspect.
+// verifyDindInspectFields checks the user-provided HostConfig and env.
 func verifyDindInspectFields(t *testing.T, in container.InspectResponse, cfg *config.Config, input ManagedSpecInput) {
 	t.Helper()
 	cc := in.Config
 	hc := in.HostConfig
 
-	// The three JIT env values (exposed as documented in the README). The
-	// order depends on the daemon, so compare as a set.
+	// Docker does not guarantee environment ordering.
 	for _, want := range []string{
 		"ACTIONS_RUNNER_INPUT_JITCONFIG=" + input.JITConfig,
 		"ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE=1",
@@ -207,7 +185,7 @@ func verifyDindInspectFields(t *testing.T, in container.InspectResponse, cfg *co
 	}
 }
 
-// fetchLogs fetches bounded container logs.
+// fetchLogs returns bounded container logs.
 func fetchLogs(t *testing.T, c *Client, containerID string, limit int) LogResult {
 	t.Helper()
 	logs, err := c.FetchLogs(t.Context(), containerID, LogOptions{
@@ -221,8 +199,7 @@ func fetchLogs(t *testing.T, c *Client, containerID string, limit int) LogResult
 	return logs
 }
 
-// waitForLogMarker waits until a marker appears in the container logs (the
-// daemon does not consume the logs).
+// waitForLogMarker polls logs until a marker appears.
 func waitForLogMarker(t *testing.T, c *Client, containerID, marker string, timeout time.Duration) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -236,7 +213,7 @@ func waitForLogMarker(t *testing.T, c *Client, containerID, marker string, timeo
 	return false
 }
 
-// snippet cuts the first 2 KiB of a log for error messages.
+// snippet limits log data included in failures.
 func snippet(s string) string {
 	const limit = 2 * 1024
 	if len(s) <= limit {
@@ -245,7 +222,7 @@ func snippet(s string) string {
 	return s[:limit] + "…"
 }
 
-// runtimeNames returns the sorted keys of Info.Runtimes (for skip reasons).
+// runtimeNames returns runtime names in stable order.
 func runtimeNames(runtimes map[string]system.RuntimeWithStatus) []string {
 	names := make([]string, 0, len(runtimes))
 	for name := range runtimes {
@@ -255,8 +232,7 @@ func runtimeNames(runtimes map[string]system.RuntimeWithStatus) []string {
 	return names
 }
 
-// TestDindLifecycle_RunscDaemon checks the prerequisites, prepares the
-// image, and verifies two paths with an explicit HostConfig.
+// TestDindLifecycle_RunscDaemon covers natural and signal exits under runsc.
 func TestDindLifecycle_RunscDaemon(t *testing.T) {
 	c, err := New(integrationHost, 2*time.Minute)
 	if err != nil {
@@ -271,33 +247,28 @@ func TestDindLifecycle_RunscDaemon(t *testing.T) {
 		t.Fatalf("Docker Info を取得できませんでした: %v", err)
 	}
 
-	// This test intentionally selects runsc in its user HostConfig.
 	if _, ok := info.Info.Runtimes["runsc"]; !ok {
 		t.Skipf("Docker daemon に runsc runtime が登録されていません。登録済み runtime: %v", runtimeNames(info.Info.Runtimes))
 	}
 	imageRef := prepareDindImage(t, c)
-	// Create the unmanaged sentinel as a verification target (shared helper
-	// with standard).
+	// The shared sentinel proves unmanaged containers are untouched.
 	createUnmanagedSentinel(t, c, imageRef)
 
 	t.Run("自然終了と dockerd _ping", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeNatural) })
 	t.Run("signal 転送と cleanup", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeSignal) })
 }
 
-// dindRunMode represents the verification path of a container.
+// dindRunMode selects the container exit path.
 type dindRunMode string
 
 const (
-	// dindModeNatural verifies dockerd _ping, runner start and cleanup
-	// with a natural exit (immediate exit on the invalid JIT).
+	// Invalid JIT makes the runner exit naturally.
 	dindModeNatural dindRunMode = "natural"
-	// dindModeSignal sends SIGTERM while waiting for dockerd startup and
-	// verifies signal forwarding and dockerd stop cleanup.
+	// SIGTERM exercises signal forwarding during startup.
 	dindModeSignal dindRunMode = "signal"
 )
 
-// dindTestTimeout returns the GHDC_TEST_DIND_TIMEOUT value (default 7
-// minutes; only a positive ParseDuration, invalid is a fail).
+// dindTestTimeout returns the positive integration timeout.
 func dindTestTimeout(t *testing.T) time.Duration {
 	t.Helper()
 	raw := os.Getenv(dindTimeoutEnv)
@@ -311,9 +282,7 @@ func dindTestTimeout(t *testing.T) time.Duration {
 	return d
 }
 
-// runDindContainer creates a dind container with unique managed labels
-// through the production path and runs the verification for the mode.
-// t.Cleanup force-cleans it.
+// runDindContainer creates and verifies one uniquely labeled fixture.
 func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode) {
 	scaleSetID := rand.Int64N(1<<62) + 1
 	runnerID := rand.Int64N(1<<62) + 1
@@ -330,7 +299,6 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 
 	cfg := testConfig(t, "runsc")
 	cfg.Runner.Image = imageRef
-	// The dind image needs these settings; they are ordinary user input.
 	cfg.Runner.HostConfig = &container.HostConfig{
 		Runtime:     "runsc",
 		NetworkMode: "bridge",
@@ -379,8 +347,7 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 
 	t.Cleanup(func() { forceRemoveTestContainer(t, c, containerID, identity) })
 
-	// The exact match of the 6 label keys is validated by
-	// model.ValidateLabels (image-derived extras are allowed).
+	// Image-derived labels are allowed; the six managed labels must match.
 	inspect, err := c.ContainerInspect(t.Context(), containerID, mobyclient.ContainerInspectOptions{})
 	if err != nil {
 		t.Fatalf("作成直後の inspect が失敗しました: %v", err)
@@ -397,14 +364,11 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 	verifyDindRun(t, c, containerID, mode)
 }
 
-// verifyDindRun exits the container through the mode path (natural /
-// SIGTERM) and verifies dockerd startup, privilege drop and cleanup with
-// logs / wait only.
+// verifyDindRun checks startup, privilege drop, and cleanup through logs/wait.
 func verifyDindRun(t *testing.T, c *Client, containerID string, mode dindRunMode) {
-	timeout := dindTestTimeout(t) // Applied to both natural and signal exit.
+	timeout := dindTestTimeout(t)
 	if mode == dindModeSignal {
-		// Send SIGTERM after the marker appears (TERM during dockerd
-		// startup can be 143, INT after runner start can be 130).
+		// Send SIGTERM after startup begins to exercise PID 1 forwarding.
 		if !waitForLogMarker(t, c, containerID, "Waiting for Docker daemon", 90*time.Second) {
 			t.Fatalf("\"Waiting for Docker daemon\" が log に現れませんでした (container が早期に終了した可能性があります)")
 		}
@@ -418,41 +382,33 @@ func verifyDindRun(t *testing.T, c *Client, containerID string, mode dindRunMode
 		if status != 0 {
 			t.Fatalf("container の終了 code が 0 ではありません: %d。stderr 抜粋: %s", status, snippet(logs.Stderr))
 		}
-		// The entrypoint prints this log only when the curl _ping is OK.
 		if !strings.Contains(logs.Stderr, "Docker daemon is ready") {
 			t.Fatalf("inner dockerd の _ping が確認できません。stderr 抜粋: %s", snippet(logs.Stderr))
 		}
-		// This log appears only right after the DOCKER_HOST setup and
-		// setpriv (runner user, no-new-privs).
 		if !strings.Contains(logs.Stderr, "Starting runner") {
 			t.Fatalf("runner の起動が確認できません。stderr 抜粋: %s", snippet(logs.Stderr))
 		}
-		// The absence of this message is the privilege drop evidence (a
-		// root start would exit 1).
 		if strings.Contains(logs.Stderr, "Must not run interactively with sudo") || strings.Contains(logs.Stdout, "Must not run interactively with sudo") {
 			t.Fatal("runner が root で起動されました (setpriv による privilege drop が機能していません)")
 		}
-		// The TerminatedError of the invalid JIT is flattened to exit 0 by
-		// run-helper.sh.
 		if !strings.Contains(logs.Stdout, "Runner listener exit with terminated error") {
 			t.Fatalf("runner の JIT 終了が確認できません。stdout 抜粋: %s", snippet(logs.Stdout))
 		}
 	case dindModeSignal:
-		// {0, 130, 143} are allowed (137 SIGKILL is rejected).
+		// TERM/INT may be reported by either PID 1 or the runner.
 		if status == 137 || (status != 143 && status != 130 && status != 0) {
 			t.Fatalf("container の終了 code が graceful な範囲にありません: %d", status)
 		}
 	default:
 		t.Fatalf("未知の mode: %s", mode)
 	}
-	// Every path ends with the EXIT trap stopping dockerd with TERM.
+	// EXIT cleanup must stop the inner daemon.
 	if !strings.Contains(logs.Stderr, "Stopping Docker daemon") {
 		t.Fatalf("dockerd 停止 cleanup が確認できません。stderr 抜粋: %s", snippet(logs.Stderr))
 	}
 }
 
-// waitExit waits for the container to exit and returns the exit code and
-// the bounded log.
+// waitExit returns the exit code and bounded logs.
 func waitExit(t *testing.T, c *Client, containerID string, timeout time.Duration) (int64, LogResult) {
 	t.Helper()
 	waitCtx, cancel := context.WithTimeout(t.Context(), timeout)

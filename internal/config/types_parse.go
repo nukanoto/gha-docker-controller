@@ -8,11 +8,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Duration holds a YAML duration string (for example "5m", "30s"). Bare
-// numbers without a unit are rejected as misconfiguration.
+// Duration is a YAML duration that requires a unit.
 type Duration time.Duration
 
-// UnmarshalYAML accepts only strings with a unit such as "5m".
+// UnmarshalYAML parses a unit-bearing duration.
 func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.ScalarNode {
 		return fmt.Errorf("duration must be a string with a unit (e.g. 5m, 30s)")
@@ -35,7 +34,7 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// String returns the duration in time.Duration form.
+// String returns the duration text.
 func (d Duration) String() string {
 	return time.Duration(d).String()
 }

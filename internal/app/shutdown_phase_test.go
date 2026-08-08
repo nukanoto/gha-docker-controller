@@ -1,7 +1,4 @@
-// shutdown_phase_test.go verifies shutdown's phase contexts, listener join,
-// and the minimal coordinator with real objects. It fixes that earlier-phase
-// contexts are never reused and that each phase's timeout and join
-// completion conditions hold.
+// These tests cover shutdown phase isolation and listener joining.
 package app
 
 import (
@@ -16,11 +13,7 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/health"
 )
 
-// TestShutdown_WaitListenerTimesOutAtDeadline verifies with real wg/ctx that
-// waitListener returns false at ctx's deadline before wg completes and that
-// the internal goroutine also finishes after the deadline (context-aware
-// wait). joined=false on timeout is the input for shutdown deciding to give
-// up the join and proceed to the remaining phases.
+// TestShutdown_WaitListenerTimesOutAtDeadline covers the bounded join path.
 func TestShutdown_WaitListenerTimesOutAtDeadline(t *testing.T) {
 	a := newShutdownTestApp(&config.Config{})
 	release := make(chan struct{})
@@ -35,8 +28,7 @@ func TestShutdown_WaitListenerTimesOutAtDeadline(t *testing.T) {
 	if elapsed := time.Since(start); elapsed < 50*time.Millisecond {
 		t.Fatalf("waitListener が deadline より早く戻りました: %v", elapsed)
 	}
-	// Confirm the internal goroutine finishes after release (leak
-	// prevention).
+	// The helper goroutine must still be joined after the timeout.
 	close(release)
 	wgDone := make(chan struct{})
 	go func() {
@@ -50,8 +42,7 @@ func TestShutdown_WaitListenerTimesOutAtDeadline(t *testing.T) {
 	}
 }
 
-// TestShutdown_WaitListenerReturnsTrueWhenDrained verifies with real wg/ctx
-// that waitListener returns true after wg completes.
+// TestShutdown_WaitListenerReturnsTrueWhenDrained covers a completed join.
 func TestShutdown_WaitListenerReturnsTrueWhenDrained(t *testing.T) {
 	a := newShutdownTestApp(&config.Config{})
 	release := make(chan struct{})
@@ -69,11 +60,7 @@ func TestShutdown_WaitListenerReturnsTrueWhenDrained(t *testing.T) {
 	}
 }
 
-// TestShutdown_ListenerJoinTimeout verifies that the listener join wait
-// bound is max(provisioning timeout, cleanup timeout). The cleanup timeout
-// comes from the shutdown grace like the scaler (default when non-positive),
-// and the official listener calls handlers with context.WithoutCancel, so
-// the running handler execution bound becomes the join wait bound.
+// TestShutdown_ListenerJoinTimeout covers the maximum handler lifetime bound.
 func TestShutdown_ListenerJoinTimeout(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -101,9 +88,7 @@ func TestShutdown_ListenerJoinTimeout(t *testing.T) {
 	}
 }
 
-// TestShutdown_JoinTimeoutWarningIsFixed confirms that the join timeout
-// warnings are fixed English messages without dynamic information or
-// errors. Log output is not swapped; only the warning values are verified.
+// TestShutdown_JoinTimeoutWarningIsFixed keeps warnings free of dynamic data.
 func TestShutdown_JoinTimeoutWarningIsFixed(t *testing.T) {
 	for _, want := range []string{listenerJoinTimeoutWarning, scalerJoinTimeoutWarning} {
 		if want == "" {
@@ -115,12 +100,7 @@ func TestShutdown_JoinTimeoutWarningIsFixed(t *testing.T) {
 	}
 }
 
-// TestShutdown_ReadinessDropsImmediately verifies with a real loopback
-// server that right after shutdown phase 0 (run cancel) the
-// session/listener states flip to false and /readyz returns 503 while the
-// health server is still running. The listener join (phase 1) is held with a
-// wg gate to deterministically observe the state before phase 3 (health
-// shutdown).
+// TestShutdown_ReadinessDropsImmediately checks readiness before health stops.
 func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 	a := newShutdownTestApp(&config.Config{
 		Shutdown: config.ShutdownConfig{
@@ -142,7 +122,7 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 	store.SetSessionRunning(true)
 	store.SetListenerRunning(true)
 
-	// Hold the listener join (phase 1) to observe the state after phase 0.
+	// Hold phase 1 so readiness can be observed while health still serves.
 	release := make(chan struct{})
 	addWaitGate(a, release)
 
@@ -151,7 +131,6 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 		done <- a.shutdown()
 	}()
 
-	// Wait until the store flips to false right after the phase 0 cancel.
 	deadline := time.Now().Add(3 * time.Second)
 	for store.Ready() {
 		if time.Now().After(deadline) {
@@ -159,7 +138,6 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	// The health server is still running, so /readyz returns 503.
 	resp, err := http.Get("http://" + hs.Addr().String() + "/readyz")
 	if err != nil {
 		t.Fatalf("/readyz への GET が error を返した: %v", err)
@@ -169,7 +147,6 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 		t.Fatalf("shutdown 中の /readyz が %d を返しました (want 503)", resp.StatusCode)
 	}
 
-	// Release phase 1 and confirm shutdown completes.
 	close(release)
 	select {
 	case err := <-done:
@@ -181,11 +158,8 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 	}
 }
 
-// TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases verifies with real
-// objects that on a listener join timeout shutdown returns immediately
-// without running later phases. This is the contract that structurally
-// prevents races from closing components in use by running handlers; the
-// health server keeps answering, confirmed with real objects.
+// TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases protects live handlers
+// from later component closure.
 func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	joinTimeout := 100 * time.Millisecond
 	a := newShutdownTestApp(&config.Config{
@@ -205,7 +179,7 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 		t.Fatalf("health.Start が error を返した: %v", err)
 	}
 	a.health = hs
-	// Hold the listener until the join timeout.
+	// Keep a handler-like goroutine alive past the join deadline.
 	release := make(chan struct{})
 	addWaitGate(a, release)
 
@@ -215,8 +189,6 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	}()
 	select {
 	case err := <-done:
-		// The join timeout is returned as a fixed error, which Serve joins
-		// with the main error to make the exit code nonzero.
 		if err == nil || !errors.Is(err, errListenerJoinTimeout) {
 			t.Fatalf("join timeout の shutdown が errListenerJoinTimeout を返しません: %v", err)
 		}
@@ -224,7 +196,6 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 		t.Fatalf("shutdown が join timeout 後も return しませんでした")
 	}
 
-	// Later phases do not run. The health server keeps answering.
 	resp, err := http.Get("http://" + hs.Addr().String() + "/readyz")
 	if err != nil {
 		t.Fatalf("join timeout 後に health server が応答しませんでした: %v", err)
@@ -233,8 +204,6 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("join timeout 後の /readyz が %d を返しました (want 503)", resp.StatusCode)
 	}
-	// Cleanup: release the gate to end the listener-side goroutine and close
-	// the health server.
 	close(release)
 	wgDone := make(chan struct{})
 	go func() {
@@ -253,33 +222,27 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	}
 }
 
-// TestStartup_ReadinessLifecycle fixes the startup readiness transition
-// order with the store alone. session true is set before listener true;
-// listener true lasts only from right before Run to right after; both are
-// true only while the listener is actually running.
+// TestStartup_ReadinessLifecycle covers startup readiness ordering.
 func TestStartup_ReadinessLifecycle(t *testing.T) {
 	store := health.NewStore()
 	if store.Ready() {
 		t.Fatalf("起動直後の store が ready です")
 	}
-	store.SetSessionRunning(true) // after session creation
+	store.SetSessionRunning(true)
 	if store.Ready() {
 		t.Fatalf("listener 未稼働で ready になりました")
 	}
-	store.SetListenerRunning(true) // right before listener.Run
+	store.SetListenerRunning(true)
 	if !store.Ready() {
 		t.Fatalf("session と listener の両方稼働で ready になりません")
 	}
-	store.SetListenerRunning(false) // right after listener.Run
+	store.SetListenerRunning(false)
 	if store.Ready() {
 		t.Fatalf("listener 停止後も ready のままです")
 	}
 }
 
-// TestShutdown_CompletesWithoutComponents verifies that a shutdown with no
-// components completes immediately with real objects. This is the minimal
-// form of the contract that shutdown is called from error paths during
-// startup, and it returns no error.
+// TestShutdown_CompletesWithoutComponents covers partial startup cleanup.
 func TestShutdown_CompletesWithoutComponents(t *testing.T) {
 	a := newShutdownTestApp(&config.Config{
 		Shutdown: config.ShutdownConfig{Grace: config.Duration(time.Second)},
@@ -299,9 +262,7 @@ func TestShutdown_CompletesWithoutComponents(t *testing.T) {
 	}
 }
 
-// TestShutdown_WaitsForListenerWithoutResidualGrace verifies that shutdown
-// waits until the listener goroutine finishes and completes without waiting
-// out the remaining grace afterwards (phase 1), with real wg/channel.
+// TestShutdown_WaitsForListenerWithoutResidualGrace covers prompt post-join cleanup.
 func TestShutdown_WaitsForListenerWithoutResidualGrace(t *testing.T) {
 	grace := time.Second
 	a := newShutdownTestApp(&config.Config{
@@ -320,9 +281,7 @@ func TestShutdown_WaitsForListenerWithoutResidualGrace(t *testing.T) {
 	go func() {
 		done <- a.shutdown()
 	}()
-	// Delay wg completion past the start of shutdown's join so the test
-	// measures that shutdown waits for goroutine exit and then completes
-	// without the remaining grace.
+	// Ensure shutdown has entered its join before releasing the goroutine.
 	time.Sleep(50 * time.Millisecond)
 	close(release)
 	select {
@@ -342,11 +301,7 @@ func TestShutdown_WaitsForListenerWithoutResidualGrace(t *testing.T) {
 	}
 }
 
-// TestShutdown_PhaseContextsAreFresh verifies that every shutdown phase
-// creates its timeout context fresh from context.Background() and is not
-// affected by an earlier phase's expiry/cancel. It reproduces the same
-// creation order and timeouts as shutdown itself (join provisioning
-// timeout, scaler grace, health 5s, session 30s).
+// TestShutdown_PhaseContextsAreFresh prevents one phase from cancelling later cleanup.
 func TestShutdown_PhaseContextsAreFresh(t *testing.T) {
 	grace := time.Second
 	provisioning := 2 * time.Second
@@ -361,7 +316,6 @@ func TestShutdown_PhaseContextsAreFresh(t *testing.T) {
 		sessionCancel()
 	}()
 
-	// Each phase deadline matches shutdown's timeout.
 	checkDeadline := func(name string, ctx context.Context, want time.Duration) {
 		t.Helper()
 		deadline, ok := ctx.Deadline()
@@ -377,8 +331,7 @@ func TestShutdown_PhaseContextsAreFresh(t *testing.T) {
 	checkDeadline("health", healthCtx, healthShutdownTimeout)
 	checkDeadline("session", sessionCtx, sessionCloseTimeout)
 
-	// Cancelling the earlier phase (join) leaves later phase contexts alive
-	// independently (no structural reuse of expired contexts).
+	// Cancelling one phase must not cancel later phases.
 	joinCancel()
 	if joinCtx.Err() == nil {
 		t.Fatalf("join phase の cancel が反映されていません")

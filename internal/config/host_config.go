@@ -9,9 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// hostConfigYAML keeps the YAML-only behavior separate from the Moby value.
-// The embedded value is the object used by the runtime config; no intermediate
-// map or JSON representation is involved.
+// hostConfigYAML normalizes case-insensitive HostConfig keys before decoding.
 type hostConfigYAML struct {
 	container.HostConfig
 }

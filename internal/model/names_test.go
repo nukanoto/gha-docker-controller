@@ -7,9 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// TestSanitizeName_AllowedCharactersAndExplicitInputs verifies with an input
-// table that names are converted to lowercase ASCII Docker name components
-// and leading/trailing separators are removed.
+// TestSanitizeName_AllowedCharactersAndExplicitInputs covers Docker name normalization.
 func TestSanitizeName_AllowedCharactersAndExplicitInputs(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -33,9 +31,7 @@ func TestSanitizeName_AllowedCharactersAndExplicitInputs(t *testing.T) {
 	}
 }
 
-// TestSanitizeName_ExplicitRandomInputRemainsSafe verifies that even for
-// explicit random inputs generated with a fixed seed, characters outside the
-// allowed set never leak into the result and sanitize is deterministic.
+// TestSanitizeName_ExplicitRandomInputRemainsSafe covers deterministic sanitization.
 func TestSanitizeName_ExplicitRandomInputRemainsSafe(t *testing.T) {
 	const alphabet = "aZ09_-./ :日本語!"
 	random := rand.New(rand.NewSource(20260301))
@@ -61,9 +57,7 @@ func TestSanitizeName_ExplicitRandomInputRemainsSafe(t *testing.T) {
 	}
 }
 
-// TestContainerName_AtMost63BytesAfterSanitization verifies that the
-// container name stays at most 63 bytes even with a long scale set name or
-// random suffix, keeping the format and suffix.
+// TestContainerName_AtMost63BytesAfterSanitization covers the Docker name limit.
 func TestContainerName_AtMost63BytesAfterSanitization(t *testing.T) {
 	name := ContainerName(strings.Repeat("日本語/VeryLong.Scale_Set-", 20), 123456789, "ABCDEF12-extra")
 	if len(name) > containerNameLimit {
@@ -89,9 +83,7 @@ func TestContainerName_AtMost63BytesAfterSanitization(t *testing.T) {
 	}
 }
 
-// TestRunnerName_SanitizedScaleSetAndExplicitHexSuffix verifies that the
-// JIT runner name's scale set component and 12-digit hex suffix are built
-// per spec.
+// TestRunnerName_SanitizedScaleSetAndExplicitHexSuffix covers canonical names.
 func TestRunnerName_SanitizedScaleSetAndExplicitHexSuffix(t *testing.T) {
 	if got, want := RunnerName("Scale Set/Prod", "ABC-def-123456789"), "scale-set-prod-abcdef123456"; got != want {
 		t.Fatalf("runner name が不正です: 期待値 %q、実測値 %q", want, got)
@@ -101,9 +93,7 @@ func TestRunnerName_SanitizedScaleSetAndExplicitHexSuffix(t *testing.T) {
 	}
 }
 
-// TestValidRunnerName_CanonicalFormAcceptance verifies that RunnerName
-// output is always accepted, with an explicit input table and fixed-seed
-// random inputs.
+// TestValidRunnerName_CanonicalFormAcceptance covers generated names.
 func TestValidRunnerName_CanonicalFormAcceptance(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -125,9 +115,7 @@ func TestValidRunnerName_CanonicalFormAcceptance(t *testing.T) {
 	}
 }
 
-// TestValidRunnerName_ExplicitRandomOutputsAlwaysAccepted verifies that
-// RunnerName output built from explicit random inputs with a fixed seed is
-// always accepted.
+// TestValidRunnerName_ExplicitRandomOutputsAlwaysAccepted covers fixed-seed output.
 func TestValidRunnerName_ExplicitRandomOutputsAlwaysAccepted(t *testing.T) {
 	const alphabet = "aZ09_-./ :日本語!"
 	random := rand.New(rand.NewSource(20260302))
@@ -148,9 +136,7 @@ func TestValidRunnerName_ExplicitRandomOutputsAlwaysAccepted(t *testing.T) {
 	}
 }
 
-// TestValidRunnerName_MalformedRejectionTable verifies table-driven that
-// malformed, empty, non-canonical, and short-suffix runner names are
-// rejected, while the control canonical output is accepted.
+// TestValidRunnerName_MalformedRejectionTable covers canonical-form rejection.
 func TestValidRunnerName_MalformedRejectionTable(t *testing.T) {
 	valid := RunnerName("Scale Set/Prod", "ABC-def-123456789")
 	tests := []struct {

@@ -10,18 +10,13 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// validJitRunnerName is a test helper that returns a canonical runner name.
-// It uses no official I/O or mocks; the input is the pure output of
-// model.RunnerName.
+// validJitRunnerName returns a canonical runner name.
 func validJitRunnerName(t *testing.T) string {
 	t.Helper()
 	return model.RunnerName("scale-set", "0123456789ab")
 }
 
-// TestJitConfig_StringRedactsSecret verifies that JitConfig never prints the
-// real encoded secret value through fmt.Stringer output (%s and %v) and only
-// prints the fixed redaction marker. The encoded value must never appear in
-// logs, errors, or stringers.
+// TestJitConfig_StringRedactsSecret protects opaque JIT data in Stringer output.
 func TestJitConfig_StringRedactsSecret(t *testing.T) {
 	secret := "opaque-encoded-jit-secret-value"
 	jit := JitConfig{RunnerID: 11, RunnerName: validJitRunnerName(t), ScaleSetID: 42, Encoded: secret}
@@ -36,11 +31,7 @@ func TestJitConfig_StringRedactsSecret(t *testing.T) {
 	}
 }
 
-// TestValidateJitInput verifies the requested values before JIT generation
-// I/O. A non-positive Scale Set ID and a non-canonical runner name (empty, no
-// suffix, wrong length/hex/uppercase, non-canonical prefix) become errors
-// without official I/O; only a positive ID and model.RunnerName output are
-// accepted.
+// TestValidateJitInput covers validation before official I/O.
 func TestValidateJitInput(t *testing.T) {
 	t.Run("Scale Set ID", func(t *testing.T) {
 		name := validJitRunnerName(t)
@@ -83,10 +74,7 @@ func TestValidateJitInput(t *testing.T) {
 	})
 }
 
-// TestValidateJitConfig verifies the exact validation of a JIT response. A
-// nil response, a nil Runner, a non-positive runner ID, a name mismatch, a
-// Scale Set ID mismatch, and an empty encoded value become errors without
-// panicking; only the matching response succeeds.
+// TestValidateJitConfig covers malformed and matching JIT responses.
 func TestValidateJitConfig(t *testing.T) {
 	name := validJitRunnerName(t)
 	valid := &scalesetapi.RunnerScaleSetJitRunnerConfig{

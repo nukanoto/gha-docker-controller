@@ -105,8 +105,7 @@ func validateGitHub(c *Config) []error {
 	return errs
 }
 
-// validateImage delegates syntax rules to Docker's reference parser. Tags and
-// digests are both optional because Docker accepts floating image references.
+// validateImage delegates syntax checking to Docker's reference parser.
 func validateImage(image string) error {
 	if image == "" {
 		return fmt.Errorf("required")
@@ -154,7 +153,7 @@ func validateGitHubURL(rawURL string) error {
 	return nil
 }
 
-// validateDockerHost allows only an absolute unix:// socket URL.
+// validateDockerHost accepts only an absolute unix:// socket URL.
 func validateDockerHost(host string) error {
 	if host == "" {
 		return fmt.Errorf("required")

@@ -1,6 +1,4 @@
-// Package controller provides a thin Docker scaler that implements the
-// official listener.Scaler. In-process state is only the minimal set of
-// idle/busy and protected.
+// Package controller implements the official listener.Scaler with Docker.
 package controller
 
 import (
@@ -26,11 +24,9 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/scaleset"
 )
 
-// DockerScaler implements the official listener.Scaler. Desired is the single
-// formula clamp(max(minRunners, TotalAssignedJobs), 0, maxRunners). Shortage is
-// provisioned one by one; surplus is scaled down oldest idle first.
+// DockerScaler implements the official listener.Scaler with oldest-first
+// scale-down.
 type DockerScaler struct {
-	// runCtx is the run context of serve. It stops new provisioning when cancelled.
 	runCtx              context.Context
 	dockerClient        *docker.Client
 	scalesetClient      *scaleset.Client
@@ -47,12 +43,10 @@ type DockerScaler struct {
 	controllerInstance  string
 	logger              *slog.Logger
 	errCh               chan error
-	// watchCtx is the parent context of wait goroutines. Shutdown cancels and joins it.
-	watchCtx    context.Context
-	watchCancel context.CancelFunc
-	wg          sync.WaitGroup
-	// watchMu and watchStopped prevent a race between startWatch's wg.Add and
-	// Shutdown's wg.Wait. Later startWatch calls do not call wg.Add.
+	watchCtx            context.Context
+	watchCancel         context.CancelFunc
+	wg                  sync.WaitGroup
+	// watchMu serializes watch registration with Shutdown's Wait.
 	watchMu      sync.Mutex
 	watchStopped bool
 	state        runnerState
@@ -60,8 +54,7 @@ type DockerScaler struct {
 
 var _ listenerapi.Scaler = (*DockerScaler)(nil)
 
-// NewDockerScaler builds a DockerScaler. Nil args, a non-positive scaleSetID,
-// and an empty version are errors.
+// NewDockerScaler builds a validated DockerScaler.
 func NewDockerScaler(runCtx context.Context, dockerClient *docker.Client, scalesetClient *scaleset.Client,
 	cfg *config.Config, scaleSetID int, version string, logger *slog.Logger) (*DockerScaler, error) {
 	if runCtx == nil {
@@ -117,7 +110,7 @@ func NewDockerScaler(runCtx context.Context, dockerClient *docker.Client, scales
 	}, nil
 }
 
-// HandleDesiredRunnerCount scales idle runners toward the requested count.
+// HandleDesiredRunnerCount moves the runner count toward demand.
 func (s *DockerScaler) HandleDesiredRunnerCount(ctx context.Context, count int) (int, error) {
 	desired := desiredRunnerCount(s.minRunners, s.maxRunners, count)
 	current := s.state.count()
@@ -133,8 +126,6 @@ func (s *DockerScaler) HandleDesiredRunnerCount(ctx context.Context, count int) 
 			slog.Int("currentCount", current), slog.Int("desiredCount", desired), slog.Int("scaleUp", desired-current))
 		for range desired - current {
 			if err := s.provision(ctx); err != nil {
-				// Return the current count on failure. Provision only grows
-				// state on success, so the count is the source of truth.
 				return s.state.count(), fmt.Errorf("failed to start runner: %w", err)
 			}
 		}
@@ -142,12 +133,11 @@ func (s *DockerScaler) HandleDesiredRunnerCount(ctx context.Context, count int) 
 	default:
 		s.logger.Info("Scaling down runners",
 			slog.Int("currentCount", current), slog.Int("desiredCount", desired), slog.Int("scaleDown", current-desired))
-		// The listener ctx uses WithoutCancel, so use one fresh context shared by all scale-downs.
+		// Handlers may outlive listener cancellation; use a fresh cleanup context.
 		cctx, ccancel := s.cleanupContext()
 		defer ccancel()
 		for _, ref := range s.state.scaleDownIdle(current - desired) {
 			if err := s.removeRunner(cctx, ref); err != nil {
-				// Return the current count, which excludes refs already removed by scaleDownIdle.
 				return s.state.count(), fmt.Errorf("failed to remove runner: %w", err)
 			}
 		}
@@ -155,8 +145,7 @@ func (s *DockerScaler) HandleDesiredRunnerCount(ctx context.Context, count int) 
 	}
 }
 
-// HandleJobStarted implements the official listener.Scaler. It moves a known
-// idle runner to busy; a nil event is a fixed error.
+// HandleJobStarted marks the assigned runner busy.
 func (s *DockerScaler) HandleJobStarted(ctx context.Context, jobInfo *scalesetapi.JobStarted) error {
 	if jobInfo == nil {
 		return errors.New("controller: nil job started event")
@@ -168,9 +157,7 @@ func (s *DockerScaler) HandleJobStarted(ctx context.Context, jobInfo *scalesetap
 	return nil
 }
 
-// HandleJobCompleted implements the official listener.Scaler. It takes
-// cleanup ownership atomically, removes the container, and treats a nil event
-// as a fixed error.
+// HandleJobCompleted takes cleanup ownership and removes the runner.
 func (s *DockerScaler) HandleJobCompleted(ctx context.Context, jobInfo *scalesetapi.JobCompleted) error {
 	if jobInfo == nil {
 		return errors.New("controller: nil job completed event")
@@ -190,9 +177,7 @@ func (s *DockerScaler) HandleJobCompleted(ctx context.Context, jobInfo *scaleset
 	return nil
 }
 
-// provision creates one runner. It is a one-way flow: JIT generation, spec
-// build, create, start, idle registration, and wait watch. provisioningTimeout
-// bounds completion.
+// provision creates, starts, registers, and watches one runner.
 func (s *DockerScaler) provision(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, s.provisioningTimeout)
 	defer cancel()
@@ -226,11 +211,9 @@ func (s *DockerScaler) provision(ctx context.Context) error {
 	}
 	created, err := s.dockerClient.CreateManaged(ctx, spec)
 	if err != nil {
-		// Even if the create response is an error or timeout, the daemon may
-		// have created it; do not re-list to recover it.
+		// Recovery is centralized in the next startup after uncertain creates.
 		return fmt.Errorf("create runner container: %w", err)
 	}
-	// start runs only after a fresh inspect passes full validation of the 6 required labels.
 	if _, err := s.dockerClient.StartManaged(ctx, created.ID, identity); err != nil {
 		s.cleanupAfterProvisionFailure(created.ID, identity)
 		return fmt.Errorf("start runner container: %w", err)
@@ -241,9 +224,7 @@ func (s *DockerScaler) provision(ctx context.Context) error {
 	return nil
 }
 
-// cleanupAfterProvisionFailure removes the created container on start failure
-// as far as possible. The provision ctx may have reached its deadline, so
-// cleanup uses a fresh context derived from Background.
+// cleanupAfterProvisionFailure removes a container after a start failure.
 func (s *DockerScaler) cleanupAfterProvisionFailure(containerID string, identity model.RunnerIdentity) {
 	cctx, ccancel := s.cleanupContext()
 	defer ccancel()
@@ -256,8 +237,7 @@ func (s *DockerScaler) cleanupAfterProvisionFailure(containerID string, identity
 	}
 }
 
-// removeRunner verifies the managed labels freshly, then removes the
-// container. A 404 counts as success because the state is already gone.
+// removeRunner verifies and removes one managed container.
 func (s *DockerScaler) removeRunner(ctx context.Context, ref runnerRef) error {
 	mc, err := s.dockerClient.VerifyManaged(ctx, ref.containerID, ref.identity(s.scaleSetID))
 	if err != nil {
@@ -272,23 +252,16 @@ func (s *DockerScaler) removeRunner(ctx context.Context, ref runnerRef) error {
 	return nil
 }
 
-// Recover lists the managed containers of the target Scale Set at serve
-// startup and protects or cleans them up without guessing state. Call it
-// before listener.Run. running/paused/restarting/unknown states are protected;
-// created/exited/dead are cleaned up.
+// Recover adopts or removes managed containers left by an earlier process.
 func (s *DockerScaler) Recover(ctx context.Context) error {
 	containers, err := s.dockerClient.ListManaged(ctx, int64(s.scaleSetID))
 	if err != nil {
 		return err
 	}
-	// Cleanup uses one fresh context derived from Background, shared by all
-	// targets, instead of the startup ctx of listing and inspect. This keeps
-	// startup cancellation from interrupting cleanup.
+	// Cleanup must outlive the startup/listing context.
 	cctx, ccancel := s.cleanupContext()
 	defer ccancel()
 	for _, mc := range containers {
-		// Re-check the value observed at listing time with a fresh inspect.
-		// Malformed containers return an error without changing the container.
 		refreshed, err := s.dockerClient.RefreshManaged(ctx, mc)
 		if err != nil {
 			if cerrdefs.IsNotFound(err) {
@@ -313,8 +286,6 @@ func (s *DockerScaler) Recover(ctx context.Context) error {
 	return nil
 }
 
-// runnerRefFromManaged restores a runnerRef from the labels of a managed
-// container. The runner-id label must be a positive base-10 integer.
 func runnerRefFromManaged(mc docker.ManagedContainer) (runnerRef, error) {
 	return runnerRefFromLabels(mc.ID(), mc.Labels())
 }
@@ -334,14 +305,11 @@ func runnerRefFromLabels(id string, labels map[string]string) (runnerRef, error)
 	}, nil
 }
 
-// startWatch starts a goroutine that watches the container exit. On exit it
-// takes cleanup ownership atomically, removes the container, and reports
-// non-context errors to errCh.
+// startWatch removes a runner when its container exits.
 func (s *DockerScaler) startWatch(ref runnerRef, protected bool) {
 	s.watchMu.Lock()
 	if s.watchStopped {
-		// Do not add new watches after shutdown starts. The same critical
-		// section on watchStopped prevents concurrent wg.Add and wg.Wait.
+		// The same lock prevents concurrent wg.Add and wg.Wait.
 		s.watchMu.Unlock()
 		return
 	}
@@ -356,21 +324,15 @@ func (s *DockerScaler) startWatch(ref runnerRef, protected bool) {
 				return
 			}
 			if cerrdefs.IsNotFound(err) {
-				// The container was removed externally or by another cleanup.
-				// Release in-process state so the missing container is not
-				// counted in capacity.
 				s.releaseWatchOwnership(ref, protected)
 				return
 			}
 			s.notifyError(fmt.Errorf("wait container %s: %w", ref.containerID, err))
 			return
 		}
-		// Exit: take ownership atomically, then clean up. If it cannot be
-		// taken, another path already handled it.
 		if !s.releaseWatchOwnership(ref, protected) {
 			return
 		}
-		// watchCtx may be cancelled by shutdown, so cleanup uses a fresh context.
 		cctx, ccancel := s.cleanupContext()
 		err = s.removeRunner(cctx, ref)
 		ccancel()
@@ -380,9 +342,7 @@ func (s *DockerScaler) startWatch(ref runnerRef, protected bool) {
 	}()
 }
 
-// releaseWatchOwnership removes a watched runner from in-process state. The
-// same path is used when the container no longer exists, preventing capacity
-// from being over-counted.
+// releaseWatchOwnership removes a watched runner from in-process state.
 func (s *DockerScaler) releaseWatchOwnership(ref runnerRef, protected bool) bool {
 	if protected {
 		_, ok := s.state.takeProtected(ref.containerID)
@@ -392,15 +352,12 @@ func (s *DockerScaler) releaseWatchOwnership(ref runnerRef, protected bool) bool
 	return ok
 }
 
-// cleanupContext returns a fresh context for cleanup. It does not reuse the
-// WithoutCancel handler ctx or watchCtx; it creates a new deadline from
-// Background.
+// cleanupContext returns a fresh deadline independent of handler and watch contexts.
 func (s *DockerScaler) cleanupContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), s.cleanupTimeout)
 }
 
-// notifyError notifies errCh at most once. The non-blocking send on the
-// buffer-1 channel never blocks.
+// notifyError reports the first asynchronous error without blocking.
 func (s *DockerScaler) notifyError(err error) {
 	select {
 	case s.errCh <- err:
@@ -408,30 +365,22 @@ func (s *DockerScaler) notifyError(err error) {
 	}
 }
 
-// ErrCh returns fatal asynchronous scaler errors.
+// ErrCh returns asynchronous scaler errors.
 func (s *DockerScaler) ErrCh() <-chan error {
 	return s.errCh
 }
 
-// ErrShutdownJoinTimeout is a fixed error meaning watch join exceeded the ctx
-// deadline. It contains no dynamic information. The caller (app) skips
-// subsequent component closes on this error and relies on process exit.
+// ErrShutdownJoinTimeout means watches outlived the shutdown deadline.
 var ErrShutdownJoinTimeout = errors.New("controller: scaler join grace expired; runner watches still running; aborting shutdown; process exit will release resources; leftover containers will be recovered at next startup")
 
-// Shutdown stops new creation, cancels and joins watches, and cleans up the
-// idle runners of this process. Busy runners are cleaned up only when
-// busyPolicy=stop; protected runners always stay. If watch join exceeds the ctx
-// deadline, it returns ErrShutdownJoinTimeout without cleanup, and the caller
-// closes no further components. Idle/busy cleanup failures are returned via
-// errors.Join so the caller (app) makes the process exit code nonzero together
-// with the main error (not just an ErrCh notification).
+// Shutdown stops provisioning, joins watches, and cleans up owned runners.
+// Protected runners remain available for the next process.
 func (s *DockerScaler) Shutdown(ctx context.Context) error {
 	s.watchMu.Lock()
 	s.watchStopped = true
 	s.watchMu.Unlock()
 	s.watchCancel()
-	// Wait for wg completion via a channel. On ctx deadline, return the timeout
-	// error without waiting for the rest.
+	// Return on deadline instead of waiting for late watches.
 	done := make(chan struct{})
 	go func() {
 		s.wg.Wait()
@@ -450,8 +399,7 @@ func (s *DockerScaler) Shutdown(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// cleanupRefs returns each ref's cleanup failure as an error. Shutdown joins
-// them with errors.Join for the caller, so nothing is sent to errCh.
+// cleanupRefs collects cleanup failures for errors.Join.
 func (s *DockerScaler) cleanupRefs(ctx context.Context, refs []runnerRef) []error {
 	var errs []error
 	for _, ref := range refs {
@@ -462,8 +410,7 @@ func (s *DockerScaler) cleanupRefs(ctx context.Context, refs []runnerRef) []erro
 	return errs
 }
 
-// desiredRunnerCount computes the single demand formula
-// clamp(max(minRunners, TotalAssignedJobs), 0, maxRunners).
+// desiredRunnerCount clamps demand to the configured bounds.
 func desiredRunnerCount(minRunners, maxRunners, totalAssignedJobs int) int {
 	return min(max(0, minRunners, totalAssignedJobs), max(0, maxRunners))
 }

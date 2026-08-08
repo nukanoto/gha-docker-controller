@@ -8,7 +8,6 @@ import (
 )
 
 // validateSpecInput checks the values required to create a managed runner.
-// HostConfig is optional because Docker applies its defaults when it is nil.
 func validateSpecInput(cfg *config.Config, input ManagedSpecInput) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")

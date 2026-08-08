@@ -1,16 +1,7 @@
 //go:build integration
 
-// standard_integration_helpers_test.go defines the common helpers of the
-// standard integration tests. The unmanaged sentinel
-// (createUnmanagedSentinel and verifyAndRemoveUnmanagedSentinel) is shared
-// with the dind integration test. The sentinel approach does not compare
-// whole-daemon snapshots; it verifies the ID/state/label invariants of the
-// single unique sentinel the test creates (no contention with fixtures of
-// parallel packages). cleanupManagedFixture follows the test fixture
-// cleanup principle (via the fresh managed guard); only in the abnormal
-// case does it fall back to the forceRemoveTestContainer official SDK
-// forced removal (forceRemoveTestContainer is defined in
-// dind_integration_test.go).
+// Shared integration helpers use a single unmanaged sentinel and the fresh
+// managed guard; this avoids whole-daemon snapshots and parallel contention.
 package docker
 
 import (
@@ -27,16 +18,8 @@ import (
 	"github.com/nukanoto/gha-docker-controller/internal/model"
 )
 
-// cleanupManagedFixture removes a test-created container through the
-// production removal path (VerifyManaged + CleanupManaged). CleanupManaged
-// always does a fresh inspect and managed label re-match (fresh managed
-// guard) internally, so this is the cleanup principle. Only when the guard
-// detects a label mismatch or the managed path returns an error does it
-// force-remove with the official SDK ContainerRemove
-// (forceRemoveTestContainer). A 404 is a state observation meaning "already
-// gone" and counts as success. It is called from t.Cleanup, so it uses an
-// independent bounded context instead of t.Context() (already cancelled
-// right before cleanup).
+// cleanupManagedFixture removes a fixture through the production guard and
+// uses the test-only force path only after that path fails.
 func cleanupManagedFixture(t *testing.T, c *Client, containerID string, identity model.RunnerIdentity) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -44,30 +27,22 @@ func cleanupManagedFixture(t *testing.T, c *Client, containerID string, identity
 	mc, err := c.VerifyManaged(ctx, containerID, identity)
 	if err != nil {
 		if cerrdefs.IsNotFound(err) {
-			// Already gone (for example, already removed by the CleanupManaged
-			// of the test body).
 			return
 		}
-		// Abnormal case: fresh inspect + exact check of the test labels,
-		// then force-remove with the official SDK.
 		t.Logf("managed 経路の VerifyManaged が失敗したため、test-only の強制削除へ倒します: %v", err)
 		forceRemoveTestContainer(t, c, containerID, identity)
 		return
 	}
 	if _, err := c.CleanupManaged(ctx, mc, ManagedCleanupOptions{StopTimeout: 30 * time.Second}); err != nil {
-		// Abnormal case: same as above.
 		t.Logf("CleanupManaged が失敗したため、test-only の強制削除へ倒します: %v", err)
 		forceRemoveTestContainer(t, c, containerID, identity)
 	}
 }
 
-// unmanagedSentinelLabel is the test-only label key that identifies an
-// unmanaged sentinel container.
+// unmanagedSentinelLabel identifies the test-only unmanaged sentinel.
 const unmanagedSentinelLabel = "ghadc.test.sentinel"
 
-// createUnmanagedSentinel creates one unmanaged sentinel container without
-// managed labels and registers its cleanup (verify and remove). It is never
-// started; it stays in the created state.
+// createUnmanagedSentinel creates an unstarted unmanaged control fixture.
 func createUnmanagedSentinel(t *testing.T, c *Client, imageRef string) string {
 	t.Helper()
 	created, err := c.c.ContainerCreate(t.Context(), mobyclient.ContainerCreateOptions{Config: &container.Config{
@@ -76,19 +51,14 @@ func createUnmanagedSentinel(t *testing.T, c *Client, imageRef string) string {
 	if err != nil {
 		t.Fatalf("unmanaged sentinel の作成に失敗しました: %v", err)
 	}
-	// Never leave it behind: register the cleanup here (LIFO, so the managed
-	// fixture cleanup registered later runs first).
+	// Register cleanup here so later fixture cleanup runs first (LIFO).
 	t.Cleanup(func() {
 		verifyAndRemoveUnmanagedSentinel(t, c, created.ID)
 	})
 	return created.ID
 }
 
-// verifyAndRemoveUnmanagedSentinel fresh-inspects that the sentinel
-// ID/state/label are unchanged, then removes it with the official SDK (a
-// 404 counts as success). The production removal path requires managed
-// labels, so the official SDK is used as the cleanup of the test-only
-// container.
+// verifyAndRemoveUnmanagedSentinel checks the control fixture before removal.
 func verifyAndRemoveUnmanagedSentinel(t *testing.T, c *Client, containerID string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -111,15 +81,13 @@ func verifyAndRemoveUnmanagedSentinel(t *testing.T, c *Client, containerID strin
 	}
 }
 
-// verifyInspectHostConfig verifies the user-provided fields with inspect.
+// verifyInspectHostConfig checks user-provided HostConfig fields.
 func verifyInspectHostConfig(t *testing.T, in container.InspectResponse, cfg *config.Config, input ManagedSpecInput) {
 	t.Helper()
 	cc := in.Config
 	hc := in.HostConfig
 
-	// The three JIT env values really exist in the inspect. This exposure is
-	// the documented README contract; compare as a set (the order depends on
-	// the daemon).
+	// Docker does not guarantee environment ordering.
 	wantEnv := map[string]bool{
 		"ACTIONS_RUNNER_INPUT_JITCONFIG=" + input.JITConfig:                                      true,
 		"ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE=1":                                   true,
