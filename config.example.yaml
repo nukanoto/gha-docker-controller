@@ -12,8 +12,8 @@ github:
     privateKeyFile: /etc/gha-docker-controller/github-app.pem
 
 scaleSet:
-  name: production
-  runnerGroup: default
+  name: my-gha-docker-runner
+  runnerGroup: Default
   minRunners: 0
   maxRunners: 4
 

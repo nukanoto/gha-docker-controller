@@ -26,7 +26,7 @@ type CheckResult struct {
 // EnsureScaleSet fetches or creates the Scale Set at serve startup. The order
 // is: get the runner group, look up the existing Scale Set, create it once if
 // missing, and re-fetch once on RunnerExistsError. For an existing set it
-// requires ID, name, group ID, a single System label, and DisableUpdate=true
+// requires ID, name, group ID, a single system label, and DisableUpdate=true
 // to match; a mismatch is a fatal error without auto-update. After fetching it
 // updates the official client's SystemInfo with build info and the ScaleSetID.
 // It never deletes the Scale Set on shutdown.
@@ -116,7 +116,7 @@ func validateRunnerGroup(group *scalesetapi.RunnerGroup, wantName string) error 
 // validateScaleSet is a pure validator that checks the Scale Set matches the
 // expectation. A nil response is rejected as protocol-fatal. The ID must be
 // positive, name and group ID must match the lookup values, there must be
-// exactly one System label matching the name, and DisableUpdate must be true.
+// exactly one system label matching the name, and DisableUpdate must be true.
 // A mismatch is an error without auto-update.
 func validateScaleSet(ss *scalesetapi.RunnerScaleSet, groupID int, name string) error {
 	if ss == nil {
@@ -131,9 +131,9 @@ func validateScaleSet(ss *scalesetapi.RunnerScaleSet, groupID int, name string) 
 	if ss.RunnerGroupID != groupID {
 		return protocolErrorf("validate scale set", "runner scale set %q group mismatch: got %d, want %d", name, ss.RunnerGroupID, groupID)
 	}
-	// "System" is the fixed value the official client uses for the label Type.
-	if len(ss.Labels) != 1 || ss.Labels[0].Type != "System" || ss.Labels[0].Name != name {
-		return protocolErrorf("validate scale set", "runner scale set %q must have exactly one System label %q (got %v)", name, name, ss.Labels)
+	// The API response uses the canonical lowercase label type.
+	if len(ss.Labels) != 1 || ss.Labels[0].Type != "system" || ss.Labels[0].Name != name {
+		return protocolErrorf("validate scale set", "runner scale set %q must have exactly one system label %q (got %v)", name, name, ss.Labels)
 	}
 	if !ss.RunnerSetting.DisableUpdate {
 		return protocolErrorf("validate scale set", "runner scale set %q must have DisableUpdate=true", name)

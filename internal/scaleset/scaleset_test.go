@@ -38,7 +38,7 @@ func TestValidateRunnerGroup(t *testing.T) {
 }
 
 // TestValidateScaleSet verifies the match requirements (ID, name, group ID,
-// a single System label, DisableUpdate=true). Every mismatch including a nil
+// a single system label, DisableUpdate=true). Every mismatch including a nil
 // response is an error without auto-update. Both the create-success response
 // and the post-exists reget flow through this validator, so nil is rejected
 // in one place.
@@ -47,7 +47,7 @@ func TestValidateScaleSet(t *testing.T) {
 		ID:            42,
 		Name:          "scale-set",
 		RunnerGroupID: 5,
-		Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
+		Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 		RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 	}
 	tests := []struct {
@@ -58,17 +58,17 @@ func TestValidateScaleSet(t *testing.T) {
 		{name: "nil 応答", ss: nil},
 		{name: "非正の ID", ss: &scalesetapi.RunnerScaleSet{
 			ID: 0, Name: "scale-set", RunnerGroupID: 5,
-			Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
+			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
 		{name: "name の不一致", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "other", RunnerGroupID: 5,
-			Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
+			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
 		{name: "group ID の不一致", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 9,
-			Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
+			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
 		{name: "label なし", ss: &scalesetapi.RunnerScaleSet{
@@ -78,8 +78,8 @@ func TestValidateScaleSet(t *testing.T) {
 		{name: "label が 2 個", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 5,
 			Labels: []scalesetapi.Label{
-				{Type: "System", Name: "scale-set"},
-				{Type: "System", Name: "extra"},
+				{Type: "system", Name: "scale-set"},
+				{Type: "system", Name: "extra"},
 			},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
@@ -88,9 +88,14 @@ func TestValidateScaleSet(t *testing.T) {
 			Labels:        []scalesetapi.Label{{Type: "Custom", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
-		{name: "DisableUpdate=false", ss: &scalesetapi.RunnerScaleSet{
+		{name: "label type が大文字の System", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 5,
 			Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
+			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
+		}},
+		{name: "DisableUpdate=false", ss: &scalesetapi.RunnerScaleSet{
+			ID: 42, Name: "scale-set", RunnerGroupID: 5,
+			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: false},
 		}},
 		{name: "一致する応答", ss: valid, ok: true},
@@ -120,7 +125,7 @@ func TestCheckScaleSetResult(t *testing.T) {
 		ID:            42,
 		Name:          "scale-set",
 		RunnerGroupID: 5,
-		Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
+		Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 		RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 	}
 	t.Run("不存在は warning で失敗しない", func(t *testing.T) {
@@ -153,7 +158,7 @@ func TestCheckScaleSetResult(t *testing.T) {
 	t.Run("不一致は error", func(t *testing.T) {
 		mismatched := &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "other", RunnerGroupID: 5,
-			Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
+			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}
 		if _, err := checkScaleSetResult(group, mismatched, "scale-set"); err == nil {
