@@ -1,10 +1,5 @@
 package config
 
-// End-to-end tests for Load using a temporary directory and real files
-// (mocks/stubs are forbidden). Covered: defaults, required fields, auth
-// exclusivity, normalization and profiles. Individual rules are covered by
-// validate_test.go, schema_test.go, secret_test.go and parse_format_test.go.
-
 import (
 	"bytes"
 	"os"
@@ -12,18 +7,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/moby/moby/api/types/container"
 )
 
-// keyPEM is a dummy PEM standing in for the secret file body. It is not a
-// real key; a unique string is used to verify that secrets are not leaked.
 const keyPEM = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA-dummy-key-for-test\n-----END RSA PRIVATE KEY-----"
 
-// sha256Digest is the multi-platform index digest of the official runner
-// 2.336.0.
-const sha256Digest = "sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda"
-
-// minimalConfigYAML is the smallest config with only the mandatory fields.
-// Used to verify defaults.
 const minimalConfigYAML = `github:
   scope: organization
   owner: my-org
@@ -35,15 +24,9 @@ scaleSet:
   name: prod
   maxRunners: 2
 runner:
-  image: ghcr.io/actions/actions-runner:2.336.0
-  cpu: "1"
-  memory: 1GiB
-  memorySwap: 1GiB
-  pidsLimit: 128
+  image: ubuntu
 `
 
-// baseConfigYAML is the shared base for Load table tests, including the
-// docker section and timeouts.
 const baseConfigYAML = `github:
   scope: organization
   owner: my-org
@@ -56,22 +39,13 @@ scaleSet:
   maxRunners: 2
 docker:
   host: unix:///var/run/docker.sock
-  runtime: runsc
-  network: bridge
   pullPolicy: if-not-present
 runner:
   image: ghcr.io/actions/actions-runner:2.336.0
-  cpu: "1"
-  memory: 1GiB
-  memorySwap: 1GiB
-  pidsLimit: 128
   provisioningTimeout: 5m
   stopTimeout: 30s
 `
 
-// patRepoYAML is a repository-scope config using PAT (GITHUB_TOKEN env)
-// authentication. The config.example.yaml schema is validated against the
-// real repository file by TestLoad_ConfigExampleFile.
 const patRepoYAML = `github:
   url: https://github.com/
   scope: repository
@@ -81,382 +55,190 @@ scaleSet:
   name: prod
   maxRunners: 2
 runner:
-  image: ghcr.io/actions/actions-runner:2.336.0
-  cpu: "1"
-  memory: 1GiB
-  memorySwap: 1GiB
-  pidsLimit: 128
+  image: ubuntu
 `
 
-// mustWriteSecret writes a real file into a temporary directory and returns
-// its path. The permission is forced with chmod after creation so umask
-// cannot interfere.
-func mustWriteSecret(t *testing.T, name string, content string, perm os.FileMode) string {
+func mustWriteSecret(t *testing.T, name, content string, perm os.FileMode) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("failed to create secret file: %v", err)
+		t.Fatalf("秘密ファイルを作成できませんでした: %v", err)
 	}
 	if err := os.Chmod(path, perm); err != nil {
-		t.Fatalf("failed to set secret file permissions: %v", err)
+		t.Fatalf("秘密ファイルの権限を設定できませんでした: %v", err)
 	}
 	return path
 }
 
-// writeConfig writes YAML into a temporary directory and returns its path.
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("failed to create config file: %v", err)
+		t.Fatalf("設定ファイルを作成できませんでした: %v", err)
 	}
 	return path
 }
 
-// baseWithKey returns baseConfigYAML with __KEY__ replaced by the real path
-// of a temporary key file.
 func baseWithKey(t *testing.T) string {
 	t.Helper()
 	return strings.ReplaceAll(baseConfigYAML, "__KEY__", mustWriteSecret(t, "key.pem", keyPEM, 0600))
 }
 
-// loadDoc writes doc to a temporary file, loads it, requires success and
-// returns the Config and Warnings.
 func loadDoc(t *testing.T, doc string) (*Config, []Warning) {
 	t.Helper()
 	c, warnings, err := Load(writeConfig(t, doc))
 	if err != nil {
-		t.Fatalf("Load failed: %v", err)
+		t.Fatalf("設定を読み込めませんでした: %v", err)
 	}
 	return c, warnings
 }
 
-// checkErr verifies that err is nil when wantErr is empty, and that err's
-// message contains wantErr otherwise.
 func checkErr(t *testing.T, name, wantErr string, err error) {
 	t.Helper()
 	if wantErr == "" {
 		if err != nil {
-			t.Fatalf("%s: unexpected error returned: %v", name, err)
+			t.Fatalf("%s: 予期しないエラーです: %v", name, err)
 		}
 		return
 	}
 	if err == nil || !strings.Contains(err.Error(), wantErr) {
-		t.Fatalf("%s: expected error %q was not returned: err=%v", name, wantErr, err)
+		t.Fatalf("%s: エラー %q が返りませんでした: %v", name, wantErr, err)
 	}
 }
 
-// TestLoad_ConfigExampleFile loads the repository config.example.yaml with
-// the secret file path replaced, and verifies there are zero warnings and the
-// normalization results (the schema itself is not modified).
 func TestLoad_ConfigExampleFile(t *testing.T) {
 	data, err := os.ReadFile("../../config.example.yaml")
 	if err != nil {
-		t.Fatalf("failed to read config.example.yaml: %v", err)
+		t.Fatalf("config.example.yaml を読めませんでした: %v", err)
 	}
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
 	replaced := strings.ReplaceAll(string(data), "/etc/gha-docker-controller/github-app.pem", keyPath)
 	c, warnings, err := Load(writeConfig(t, replaced))
 	if err != nil {
-		t.Fatalf("failed to load config.example.yaml: %v", err)
+		t.Fatalf("config.example.yaml を読み込めませんでした: %v", err)
 	}
 	if len(warnings) != 0 {
-		t.Fatalf("warning returned for example: %+v", warnings)
+		t.Fatalf("example に警告があります: %+v", warnings)
 	}
-	// Verify the normalization of the fully explicit config with a few
-	// representative fields.
-	if c.GitHub.URL != "https://github.com" || c.GitHub.Owner != "your-organization" || c.GitHub.App.AppID != 123456 || !bytes.Equal(c.GitHub.App.PrivateKey, []byte(keyPEM)) {
-		t.Fatalf("GitHub normalization result is invalid: %+v", c.GitHub)
+	if c.GitHub.URL != "https://github.com" || c.GitHub.Owner != "your-organization" ||
+		c.GitHub.App.AppID != 123456 || !bytes.Equal(c.GitHub.App.PrivateKey, []byte(keyPEM)) {
+		t.Fatalf("GitHub 設定の正規化結果が不正です: %+v", c.GitHub)
 	}
 	if c.ScaleSet != (ScaleSetConfig{Name: "production", RunnerGroup: "default", MinRunners: 0, MaxRunners: 4}) {
-		t.Fatalf("scaleSet normalization result is invalid: %+v", c.ScaleSet)
+		t.Fatalf("Scale Set 設定の正規化結果が不正です: %+v", c.ScaleSet)
 	}
-	if c.Docker != (DockerConfig{Host: "unix:///var/run/docker.sock", Runtime: "runsc", Network: "bridge", PullPolicy: PullPolicyIfNotPresent}) {
-		t.Fatalf("Docker normalization result is invalid: %+v", c.Docker)
+	if c.Docker != (DockerConfig{Host: DefaultDockerHost, PullPolicy: DefaultPullPolicy}) {
+		t.Fatalf("Docker 設定の正規化結果が不正です: %+v", c.Docker)
 	}
-	if c.Runner.Image != "ghcr.io/actions/actions-runner@"+sha256Digest || c.Runner.Profile != ProfileStandard || c.Runner.CPU != NanoCPUs(2000000000) {
-		t.Fatalf("runner normalization result is invalid: image=%q profile=%q cpu=%d", c.Runner.Image, c.Runner.Profile, c.Runner.CPU)
+	if c.Runner.Image == "" || c.Runner.HostConfig == nil {
+		t.Fatalf("runner 設定の正規化結果が不正です: %+v", c.Runner)
 	}
-	if !reflect.DeepEqual(c.Runner.CapDrop, []string{"ALL"}) || !c.Runner.NoNewPrivileges {
-		t.Fatalf("runner security normalization result is invalid: capDrop=%v nnp=%v", c.Runner.CapDrop, c.Runner.NoNewPrivileges)
-	}
-	if c.Shutdown.BusyPolicy != ShutdownPolicyLeave || c.Log.Format != LogFormatJSON || c.Health.Listen != "127.0.0.1:8080" {
-		t.Fatalf("health/shutdown/log normalization result is invalid: %+v %+v %+v", c.Health, c.Shutdown, c.Log)
-	}
-	// The trailing "/" of the url is normalized and the base URL is composed
-	// of the owner only.
-	if got := c.GitHubConfigURL(); got != "https://github.com/your-organization" {
-		t.Fatalf("GitHubConfigURL is invalid: expected %q、actual %q", "https://github.com/your-organization", got)
+	if c.Shutdown.BusyPolicy != ShutdownPolicyLeave || c.Log.Format != LogFormatJSON || c.Health.Listen != DefaultHealthListen {
+		t.Fatalf("health、shutdown、log の既定値が不正です: %+v %+v %+v", c.Health, c.Shutdown, c.Log)
 	}
 }
 
-// TestLoad_DefaultsApplied verifies that defaults are applied to unset
-// fields.
 func TestLoad_DefaultsApplied(t *testing.T) {
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
 	c, warnings := loadDoc(t, strings.ReplaceAll(minimalConfigYAML, "__KEY__", keyPath))
 	if len(warnings) != 0 {
-		t.Fatalf("unexpected warning returned: %+v", warnings)
+		t.Fatalf("予期しない警告があります: %+v", warnings)
 	}
-	if c.GitHub.URL != DefaultGitHubURL || c.ScaleSet.RunnerGroup != DefaultRunnerGroup || c.ScaleSet.MinRunners != 0 {
-		t.Fatalf("defaults were not applied: url=%q group=%q min=%d", c.GitHub.URL, c.ScaleSet.RunnerGroup, c.ScaleSet.MinRunners)
-	}
-	if c.Runner.Profile != DefaultProfile || c.Runner.ProvisioningTimeout != Duration(DefaultProvisioningTimeout) || c.Runner.StopTimeout != Duration(DefaultStopTimeout) || c.Runner.Network != DefaultNetwork {
-		t.Fatalf("runner defaults were not applied: profile=%q provisioning=%v stop=%v network=%q", c.Runner.Profile, c.Runner.ProvisioningTimeout, c.Runner.StopTimeout, c.Runner.Network)
-	}
-	// Struct-level defaults are verified in a table.
-	tests := []struct {
+	wants := []struct {
 		name string
 		got  any
 		want any
 	}{
-		{"docker", c.Docker, DockerConfig{Host: DefaultDockerHost, Runtime: DefaultRuntime, Network: DefaultNetwork, PullPolicy: DefaultPullPolicy}},
-		{"runner security", c.Runner.CapDrop, []string{"ALL"}},
-		{"runner privilege", c.Runner.NoNewPrivileges, true},
-		{"dindRunner", c.DindRunner, DindRunnerConfig{Storage: DefaultDindStorage, StorageSize: DefaultDindStorageSize}},
+		{"GitHub URL", c.GitHub.URL, DefaultGitHubURL},
+		{"runner group", c.ScaleSet.RunnerGroup, DefaultRunnerGroup},
+		{"Docker", c.Docker, DockerConfig{Host: DefaultDockerHost, PullPolicy: DefaultPullPolicy}},
+		{"HostConfig", c.Runner.HostConfig, (*container.HostConfig)(nil)},
+		{"provisioning timeout", c.Runner.ProvisioningTimeout, Duration(DefaultProvisioningTimeout)},
+		{"stop timeout", c.Runner.StopTimeout, Duration(DefaultStopTimeout)},
 		{"health", c.Health, HealthConfig{Listen: DefaultHealthListen}},
 		{"shutdown", c.Shutdown, ShutdownConfig{BusyPolicy: DefaultShutdownPolicy, Grace: Duration(DefaultShutdownGrace)}},
 		{"log", c.Log, LogConfig{Format: DefaultLogFormat, Level: DefaultLogLevel}},
 	}
-	for _, tt := range tests {
+	for _, tt := range wants {
 		if !reflect.DeepEqual(tt.got, tt.want) {
-			t.Fatalf("%s default is invalid: got=%+v want=%+v", tt.name, tt.got, tt.want)
+			t.Fatalf("%s の既定値が不正です: got=%+v want=%+v", tt.name, tt.got, tt.want)
 		}
 	}
 }
 
-// TestLoad_RepoScopeWithPAT verifies the combination of repository scope with
-// PAT (GITHUB_TOKEN env) authentication and url normalization. The PAT body
-// never appears in logs or errors.
 func TestLoad_RepoScopeWithPAT(t *testing.T) {
 	token := "ghp_secret-token-value-12345"
 	t.Setenv("GITHUB_TOKEN", token)
 	c, warnings := loadDoc(t, patRepoYAML)
-	if len(warnings) != 0 {
-		t.Fatalf("unexpected warning returned: %+v", warnings)
-	}
-	if c.GitHub.Token != token {
-		// Never print the PAT value on failure (avoids re-exposing the
-		// secret).
-		t.Fatal("PAT load result is invalid (value is not printed because it is secret)")
-	}
-	if c.GitHub.App != nil {
-		t.Fatal("App was built when PAT was configured")
-	}
-	if c.GitHub.URL != "https://github.com" {
-		t.Fatalf("URL normalization is invalid: expected %q、actual %q", "https://github.com", c.GitHub.URL)
+	if len(warnings) != 0 || c.GitHub.Token != token || c.GitHub.App != nil {
+		t.Fatal("PAT 認証の読み込み結果が不正です")
 	}
 	if got := c.GitHubConfigURL(); got != "https://github.com/my-org/my-repo" {
-		t.Fatalf("GitHubConfigURL is invalid: expected %q、actual %q", "https://github.com/my-org/my-repo", got)
+		t.Fatalf("GitHubConfigURL が不正です: %q", got)
 	}
 }
 
-// TestLoad_RunnerNetworkInheritanceAndMismatch verifies runner.network
-// inheritance, mismatch rejection and host rejection.
-func TestLoad_RunnerNetworkInheritanceAndMismatch(t *testing.T) {
-	base := baseWithKey(t)
-
-	// Inheritance: keep runner.network unset and change docker.network to
-	// user-net.
-	doc := strings.Replace(base, "  network: bridge\n", "  network: user-net\n", 1)
-	if c, _ := loadDoc(t, doc); c.Runner.Network != "user-net" || c.Docker.Network != "user-net" {
-		t.Fatalf("runner.network inheritance is invalid")
-	}
-
-	// Explicit match passes.
-	doc = strings.Replace(base, "  cpu: \"1\"\n", "  network: user-net\n  cpu: \"1\"\n", 1)
-	doc = strings.Replace(doc, "  network: bridge\n", "  network: user-net\n", 1)
-	if c, _ := loadDoc(t, doc); c.Runner.Network != "user-net" {
-		t.Fatalf("explicit runner.network was not applied: %q", c.Runner.Network)
-	}
-
-	// Mismatch and host are rejected (the detailed rules live in
-	// validate_test.go).
-	doc = strings.Replace(base, "  cpu: \"1\"\n", "  network: user-net\n  cpu: \"1\"\n", 1)
-	_, _, err := Load(writeConfig(t, doc))
-	checkErr(t, "mismatch is rejected", "runner.network: must match docker.network", err)
-	doc = strings.Replace(base, "  cpu: \"1\"\n", "  network: host\n  cpu: \"1\"\n", 1)
-	_, _, err = Load(writeConfig(t, doc))
-	checkErr(t, "runner host network is rejected", "host network is not allowed", err)
-}
-
-// TestLoad_DindProfileDefaults verifies thatdind-runner requires a
-// digest image and that the default CapAdd is the set of 17 capabilities.
-func TestLoad_DindProfileDefaults(t *testing.T) {
-	base := baseWithKey(t)
-	imageLine := "  image: ghcr.io/actions/actions-runner:2.336.0\n"
-	dindImage := "  image: ghcr.io/actions/actions-runner@" + sha256Digest + "\n"
-
-	// A complete dind config (digest image) gets the default of 17 CapAdd
-	// capabilities.
-	doc := strings.Replace(base, imageLine, dindImage+"  profile: dind-runner\n", 1)
-	c, _ := loadDoc(t, doc)
-	if c.Runner.Profile != ProfileDindRunner {
-		t.Fatalf("dind profile was not applied: %+v", c.DindRunner)
-	}
-	if !reflect.DeepEqual(c.Runner.CapAdd, DindCapabilities()) {
-		t.Fatalf("dind default CapAdd set does not contain 17 capabilities: %v", c.Runner.CapAdd)
-	}
-
-	// A subset CapAdd is accepted and reflected as specified.
-	doc = strings.Replace(base, imageLine, dindImage+"  profile: dind-runner\n  capAdd: [\"CHOWN\"]\n", 1)
-	if c, _ := loadDoc(t, doc); !reflect.DeepEqual(c.Runner.CapAdd, []string{"CHOWN"}) {
-		t.Fatalf("CapAdd subset was not applied: %v", c.Runner.CapAdd)
-	}
-
-	// Rejections: tag image and runtime mismatch.
-	tests := []struct {
-		name    string
-		with    string
-		wantErr string
-	}{
-		{name: "dind tag image is rejected", with: imageLine + "  profile: dind-runner\n", wantErr: "requires a digest reference"},
-		{name: "dind runc is rejected", with: dindImage + "  profile: dind-runner\n", wantErr: "docker.runtime: dind-runner profile requires"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			doc := strings.Replace(base, imageLine, tt.with, 1)
-			if tt.name == "dind runc is rejected" {
-				doc = strings.Replace(doc, "  runtime: runsc\n", "  runtime: runc\n", 1)
-			}
-			_, _, err := Load(writeConfig(t, doc))
-			checkErr(t, tt.name, tt.wantErr, err)
-		})
-	}
-
-	// standard can freely set any registered runtime.
-	doc = strings.Replace(base, "  runtime: runsc\n", "  runtime: runc\n", 1)
-	if c, _ := loadDoc(t, doc); c.Docker.Runtime != "runc" {
-		t.Fatalf("standard runtime was not applied: %q", c.Docker.Runtime)
-	}
-}
-
-// TestLoad_RequiredFieldsMissing rejects missing mandatory fields with an
-// error carrying the field path.
 func TestLoad_RequiredFieldsMissing(t *testing.T) {
 	base := baseWithKey(t)
-
 	tests := []struct {
-		name    string
-		remove  string
-		wantErr string
+		name   string
+		remove string
+		want   string
 	}{
-		{name: "missing owner", remove: "  owner: my-org\n", wantErr: "github.owner"},
-		{name: "missing app", wantErr: "github.app or GITHUB_TOKEN is required"},
-		{name: "missing scaleset name", remove: "  name: prod\n", wantErr: "scaleSet.name"},
-		{name: "missing maxRunners", remove: "  maxRunners: 2\n", wantErr: "scaleSet.maxRunners"},
-		{name: "missing image", remove: "  image: ghcr.io/actions/actions-runner:2.336.0\n", wantErr: "runner.image"},
+		{"owner", "  owner: my-org\n", "github.owner"},
+		{"scale set name", "  name: prod\n", "scaleSet.name"},
+		{"max runners", "  maxRunners: 2\n", "scaleSet.maxRunners"},
+		{"image", "  image: ghcr.io/actions/actions-runner:2.336.0\n", "runner.image"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			doc := base
-			if tt.remove != "" {
-				doc = strings.ReplaceAll(base, tt.remove, "")
-				if doc == base {
-					t.Fatalf("test removal string %q does not match base", tt.remove)
-				}
-			} else {
-				// Remove the app block (from "  app:\n" up to just before
-				// "scaleSet:"). Clear the env so an environment PAT cannot
-				// accidentally conflict.
-				t.Setenv("GITHUB_TOKEN", "")
-				i := strings.Index(base, "  app:\n")
-				j := strings.Index(base[i:], "\nscaleSet:")
-				doc = base[:i] + base[i+j:]
-			}
-			_, _, err := Load(writeConfig(t, doc))
-			checkErr(t, tt.name, tt.wantErr, err)
+			_, _, err := Load(writeConfig(t, strings.Replace(base, tt.remove, "", 1)))
+			checkErr(t, tt.name, tt.want, err)
 		})
 	}
 }
 
-// TestLoad_UnsetResourcesAreUnlimited accepts omitted resource fields.
-func TestLoad_UnsetResourcesAreUnlimited(t *testing.T) {
-	base := baseWithKey(t)
-	for _, line := range []string{
-		"  cpu: \"1\"\n",
-		"  memory: 1GiB\n",
-		"  memorySwap: 1GiB\n",
-		"  pidsLimit: 128\n",
-	} {
-		base = strings.ReplaceAll(base, line, "")
-	}
-	c, _, err := Load(writeConfig(t, base))
-	if err != nil {
-		t.Fatalf("omitted resources should be accepted as unlimited, but returned an error: %v", err)
-	}
-	if c.Runner.CPU != 0 || c.Runner.Memory != 0 || c.Runner.MemorySwap != 0 || c.Runner.PidsLimit != 0 {
-		t.Fatalf("omitted resources are not unlimited: cpu=%d memory=%d swap=%d pids=%d", c.Runner.CPU, c.Runner.Memory, c.Runner.MemorySwap, c.Runner.PidsLimit)
-	}
-}
-
-// TestLoad_FileLevelRejections rejects an empty file and multiple documents
-// (syntax rules on the same level as unknown fields).
 func TestLoad_FileLevelRejections(t *testing.T) {
 	tests := []struct {
-		name    string
-		content string
-		wantErr string
+		name string
+		doc  string
+		want string
 	}{
-		{name: "empty file", content: "", wantErr: "config file is empty"},
-		{name: "multiple documents", content: "github: {}\n---\nscaleSet: {}\n", wantErr: "multiple YAML documents are not allowed"},
+		{"empty", "", "config file is empty"},
+		{"multiple documents", "github: {}\n---\nscaleSet: {}\n", "multiple YAML documents are not allowed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := Load(writeConfig(t, tt.content))
-			checkErr(t, tt.name, tt.wantErr, err)
+			_, _, err := Load(writeConfig(t, tt.doc))
+			checkErr(t, tt.name, tt.want, err)
 		})
 	}
 }
 
-// TestLoad_AuthConflictAndIncompleteApp rejects App and GITHUB_TOKEN
-// coexistence and missing mandatory App fields.
 func TestLoad_AuthConflictAndIncompleteApp(t *testing.T) {
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
 	base := strings.ReplaceAll(baseConfigYAML, "__KEY__", keyPath)
-
+	withoutApp := strings.Replace(base, "  app:\n    id: 1\n    installationId: 2\n    privateKeyFile: "+keyPath+"\n", "", 1)
 	tests := []struct {
-		name    string
-		mutate  func(string) string
-		wantErr string
+		name  string
+		doc   string
+		token string
+		want  string
 	}{
-		{name: "app and GITHUB_TOKEN conflict", mutate: func(doc string) string {
-			// An environment PAT together with App yields a fixed error.
-			t.Setenv("GITHUB_TOKEN", "ghp_xxx")
-			return doc
-		}, wantErr: "mutually exclusive"},
-		{name: "neither app nor GITHUB_TOKEN", mutate: func(doc string) string {
-			// Clear the env so an environment PAT cannot accidentally
-			// conflict.
-			t.Setenv("GITHUB_TOKEN", "")
-			// Remove the app block of the github section up to just before
-			// "scaleSet:".
-			i := strings.Index(doc, "  app:\n")
-			j := strings.Index(doc[i:], "\nscaleSet:")
-			return doc[:i] + doc[i+j:]
-		}, wantErr: "github.app or GITHUB_TOKEN is required"},
-		{name: "zero appId", mutate: func(doc string) string {
-			return strings.Replace(doc, "    id: 1\n", "    id: 0\n", 1)
-		}, wantErr: "github.app.id: positive integer required"},
-		{name: "zero installationId", mutate: func(doc string) string {
-			return strings.Replace(doc, "    installationId: 2\n", "    installationId: 0\n", 1)
-		}, wantErr: "github.app.installationId: positive integer required"},
-		{name: "missing privateKeyFile", mutate: func(doc string) string {
-			return strings.Replace(doc, "    privateKeyFile: "+keyPath+"\n", "    privateKeyFile: \"\"\n", 1)
-		}, wantErr: "github.app.privateKeyFile: required"},
+		{"App and PAT", base, "ghp_xxx", "mutually exclusive"},
+		{"missing App and PAT", withoutApp, "", "github.app or GITHUB_TOKEN is required"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := Load(writeConfig(t, tt.mutate(base)))
-			checkErr(t, tt.name, tt.wantErr, err)
+			t.Setenv("GITHUB_TOKEN", tt.token)
+			_, _, err := Load(writeConfig(t, tt.doc))
+			checkErr(t, tt.name, tt.want, err)
 		})
 	}
 }
 
-// TestLoad_ForcesGHESRejected rejects the GITHUB_ACTIONS_FORCE_GHES
-// environment variable.
 func TestLoad_ForcesGHESRejected(t *testing.T) {
 	t.Setenv("GITHUB_ACTIONS_FORCE_GHES", "1")
 	_, _, err := Load("this-file-does-not-matter.yaml")
-	checkErr(t, "ghes env is rejected", "GITHUB_ACTIONS_FORCE_GHES", err)
+	checkErr(t, "GHES environment", "GITHUB_ACTIONS_FORCE_GHES", err)
 }

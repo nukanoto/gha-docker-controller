@@ -138,36 +138,23 @@ type RuntimeCheck struct {
 	Present bool
 	// IsDefault reports whether it is the daemon default runtime.
 	IsDefault bool
-	// Args is the runtimeArgs list. Official Docker API introspection is not
-	// trustworthy, so check uses this only for display and never validates it.
-	Args []string
 }
 
 // CheckRuntime verifies that a runtime name is registered in Info.Runtimes.
-// runtimeArgs (--net-raw, --allow-packet-socket-write, ...) cannot be
-// guaranteed by the official Docker API, so they are not validated; manual
-// operator verification plus a warning is the responsibility boundary.
 // It returns an error when the runtime is not registered.
 func (c *Client) CheckRuntime(ctx context.Context, name string) (RuntimeCheck, error) {
 	info, err := c.Info(ctx)
 	if err != nil {
 		return RuntimeCheck{}, err
 	}
-	rt, ok := info.Info.Runtimes[name]
+	_, ok := info.Info.Runtimes[name]
 	if !ok {
 		return RuntimeCheck{Present: false}, fmt.Errorf("runtime %q is not registered on the docker daemon", name)
 	}
 	return RuntimeCheck{
 		Present:   true,
 		IsDefault: info.Info.DefaultRuntime == name,
-		Args:      rt.Args,
 	}, nil
-}
-
-// InspectNetwork reads an existing network. It never creates or changes
-// networks.
-func (c *Client) InspectNetwork(ctx context.Context, name string) (mobyclient.NetworkInspectResult, error) {
-	return c.c.NetworkInspect(ctx, name, mobyclient.NetworkInspectOptions{})
 }
 
 // CreateManaged accepts only an immutable ManagedSpec and creates a

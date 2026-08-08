@@ -133,7 +133,7 @@ func needsStop(state container.ContainerState) bool {
 // The SDK interprets a Timeout of 0 as "kill immediately with no grace", so
 // a positive setting must never round down to 0; the result is always at
 // least 1 second. It is used for the CleanupManaged stop, the spec
-// StopTimeout conversion and the dind entrypoint timeout env.
+// StopTimeout conversion.
 func stopTimeoutSeconds(d time.Duration) int {
 	return max(int((d+time.Second-1)/time.Second), 1)
 }

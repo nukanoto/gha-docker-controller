@@ -2,12 +2,9 @@
 // check never creates or deletes containers, runners, Scale Sets, or
 // networks; only Docker image store changes from image pulls are allowed. It
 // verifies authentication for querying an existing Scale Set, but it cannot
-// prove create permission when the Scale Set is absent. It also checks Docker
-// ping/version/runtime/network, the image pull policy/OCI contract, and
-// resource/profile validation. The
-// dind-runner runtimeArgs cannot be verified through the official Docker
-// API, so a warning and the operator's manual verification are the
-// responsibility boundary. All errors contain no secrets.
+// prove create permission when the Scale Set is absent. It checks Docker
+// ping/version, an explicitly configured runtime, and the image pull policy.
+// All errors contain no secrets.
 package app
 
 import (
@@ -37,14 +34,10 @@ import (
 //  1. Read-only query of credential/auth and the runner group / Scale Set.
 //     If the Scale Set is missing, a warning is logged that create permission
 //     cannot be proven read-only; that alone is not a failure.
-//  2. Docker ping/version (API >= 1.42, Engine >= 28.0) and runtime
-//     registration. For dind-runner the runtime name is defensively
-//     re-checked to be runsc, and runtimeArgs always produce a warning.
-//  3. Inspect the existing network (never create or delete).
-//  4. Apply the image pull policy (pull is the allowed mutation) and the
-//     profile's OCI label contract.
-//  5. Validate the resource/profile spec (including seccomp file, tmpfs,
-//     DNS, and ulimit). No container is created.
+//  2. Docker ping/version (API >= 1.42, Engine >= 28.0) and an explicitly
+//     configured runtime. An omitted runtime is left to Docker.
+//  3. Apply the image pull policy (pull is the allowed mutation).
+//  4. Validate the controller-owned runner spec. No container is created.
 //
 // Containers, runners, Scale Sets, and networks are never created or
 // deleted. Image pulls change the Docker image store, so the README and CLI
@@ -88,51 +81,35 @@ func Check(cfg *config.Config, version, commit string, logger *slog.Logger) erro
 		return fmt.Errorf("check: %w", err)
 	}
 	logger.Info("docker engine verified", "api_version", negotiatedAPI, "engine_version", engineVersion)
-	rt, err := dc.CheckRuntime(signalCtx, cfg.Docker.Runtime)
-	if err != nil {
-		return fmt.Errorf("check: %w", err)
-	}
-	logger.Info("docker runtime registered", "runtime", cfg.Docker.Runtime, "is_default", rt.IsDefault)
-	if cfg.Runner.Profile == config.ProfileDindRunner {
-		// Defensively re-check that the dind-runner runtime name is runsc
-		// (also guaranteed by static validation).
-		if cfg.Docker.Runtime != config.DefaultRuntime {
-			return fmt.Errorf("check: dind-runner profile requires docker.runtime %q, got %q",
-				config.DefaultRuntime, cfg.Docker.Runtime)
+	if runtime := configuredRuntime(cfg); runtime != "" {
+		rt, err := dc.CheckRuntime(signalCtx, runtime)
+		if err != nil {
+			return fmt.Errorf("check: %w", err)
 		}
-		// runtimeArgs (--net-raw, --allow-packet-socket-write) cannot be
-		// introspected through the official Docker API, so always warn. The
-		// operator checks the host side manually in daemon.json (see README).
-		logger.Warn("dind-runner runtime args (--net-raw --allow-packet-socket-write) cannot be verified via the Docker API; verify them manually in the host daemon.json")
-	} else if len(rt.Args) > 0 {
-		// Even for standard, runtimeArgs introspection is unreliable, so
-		// observed args only produce a warning.
-		logger.Warn("runtime args are observed but not verified", "runtime", cfg.Docker.Runtime)
+		logger.Info("docker runtime registered", "runtime", runtime, "is_default", rt.IsDefault)
 	}
 
-	// 3. Inspect the existing network. Never create or delete.
-	if _, err := dc.InspectNetwork(signalCtx, cfg.Runner.Network); err != nil {
-		return fmt.Errorf("check: docker network %q: %w", cfg.Runner.Network, err)
-	}
-	logger.Info("docker network verified", "network", cfg.Runner.Network)
-
-	// 4. Apply the image pull policy and check the OCI label contract.
+	// Apply the image pull policy.
 	if err := dc.EnsureImage(signalCtx, cfg.Runner.Image, cfg.Docker.PullPolicy); err != nil {
 		return fmt.Errorf("check: %w", err)
 	}
 	logger.Info("runner image verified", "image", cfg.Runner.Image, "policy", cfg.Docker.PullPolicy)
-	if err := dc.ValidateImageContract(signalCtx, cfg.Runner.Image, cfg.Runner.Profile); err != nil {
-		return fmt.Errorf("check: %w", err)
-	}
 
-	// 5. Validate the resource/profile spec. BuildManagedSpec is a read-only
+	// Validate the controller-owned spec. BuildManagedSpec is a read-only
 	// pure builder; no container is created. A dummy JIT config is used and
 	// never logged or included in errors.
 	if _, err := docker.BuildManagedSpec(checkSpecInput(cfg, version)); err != nil {
 		return fmt.Errorf("check: runner spec: %w", err)
 	}
-	logger.Info("runner spec verified", "profile", cfg.Runner.Profile)
+	logger.Info("runner spec verified")
 	return nil
+}
+
+func configuredRuntime(cfg *config.Config) string {
+	if cfg.Runner.HostConfig == nil {
+		return ""
+	}
+	return cfg.Runner.HostConfig.Runtime
 }
 
 // checkSpecInput builds the dummy input used for the read-only

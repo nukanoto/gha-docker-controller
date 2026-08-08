@@ -23,8 +23,5 @@ RUN set -eu; \
 COPY entrypoint.sh /usr/local/bin/gha-dind-entrypoint
 RUN chmod 0755 /usr/local/bin/gha-dind-entrypoint
 
-LABEL io.github.nukanoto.gha-docker-controller.profile="dind-runner-v1" \
-      io.github.nukanoto.gha-docker-controller.inner-docker="29.6.1"
-
 USER root
 ENTRYPOINT ["/usr/local/bin/gha-dind-entrypoint"]

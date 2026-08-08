@@ -1,13 +1,12 @@
 //go:build integration
 
-// dind_integration_test.go verifies every path of the dind-runner
-// profile against a real Docker daemon + runsc. It covers only the public
-// production paths (BuildManagedSpec + CreateManaged, inspect/start/wait/log,
-// ValidateImageContract); no mock/fake/stub is used. A missing daemon is a
-// fail; a missing runsc registration or missing visual runtimeArgs
-// verification is a skip with a reason. The image is the pinned digest of
-// GHDC_TEST_DIND_IMAGE, or is built from images/dind-runner with the SDK
-// ImageBuild.
+// dind_integration_test.go verifies a dind image with a user-provided
+// HostConfig against a real Docker daemon and runsc. It covers only the
+// public production paths (BuildManagedSpec + CreateManaged,
+// inspect/start/wait/log); no mock/fake/stub is used. A missing daemon is a
+// fail; a missing runsc registration is a skip with a reason. The image is
+// the pinned digest of GHDC_TEST_DIND_IMAGE, or is built from
+// images/dind-runner with the SDK ImageBuild.
 //
 // The inner dockerd is verified only through container logs / wait, never
 // via exec. Without credentials the runner exits immediately on the invalid
@@ -48,10 +47,6 @@ import (
 
 // Env vars for the dind test.
 const (
-	// dindRuntimeArgsVerifiedEnv declares that the operator visually
-	// verified the runsc runtimeArgs of the host daemon. Without it the test
-	// skips with a reason.
-	dindRuntimeArgsVerifiedEnv = "GHDC_TEST_HOST_RUNTIME_ARGS_VERIFIED"
 	// dindImageEnv is the pinned-digest dind image.
 	dindImageEnv = "GHDC_TEST_DIND_IMAGE"
 	// dindContextEnv overrides the build context of images/dind-runner.
@@ -173,23 +168,12 @@ func forceRemoveTestContainer(t *testing.T, c *Client, containerID string, ident
 	}
 }
 
-// verifyDindInspectFields verifies with inspect alone that the outer
-// container contract (non-privileged, runsc, 17 caps, /var/lib/docker
-// tmpfs, non-host, no-new-privileges, resources) really exists on the
-// daemon.
+// verifyDindInspectFields verifies the explicit HostConfig with inspect.
 func verifyDindInspectFields(t *testing.T, in container.InspectResponse, cfg *config.Config, input ManagedSpecInput) {
 	t.Helper()
 	cc := in.Config
 	hc := in.HostConfig
 
-	if cc.User != "0:0" || len(cc.Entrypoint) != 1 || cc.Entrypoint[0] != "/usr/local/bin/gha-dind-entrypoint" ||
-		len(cc.Cmd) != 1 || cc.Cmd[0] != "/home/runner/run.sh" || cc.WorkingDir != "/home/runner" {
-		t.Fatalf("daemon 上の Config が契約と一致しません: user=%q entrypoint=%v cmd=%v workdir=%q",
-			cc.User, cc.Entrypoint, cc.Cmd, cc.WorkingDir)
-	}
-	if cc.StopSignal != "SIGTERM" || cc.Tty || cc.OpenStdin || cc.StdinOnce {
-		t.Fatalf("daemon 上の process 設定が不正です: signal=%q tty=%v", cc.StopSignal, cc.Tty)
-	}
 	// The three JIT env values (exposed as documented in the README). The
 	// order depends on the daemon, so compare as a set.
 	for _, want := range []string{
@@ -202,41 +186,24 @@ func verifyDindInspectFields(t *testing.T, in container.InspectResponse, cfg *co
 		}
 	}
 
-	if hc.Runtime != "runsc" || hc.NetworkMode != "bridge" || hc.Privileged || hc.ReadonlyRootfs || hc.AutoRemove {
-		t.Fatalf("daemon 上の runtime/network/privileged が不正です: runtime=%q network=%q privileged=%v readonly=%v auto-remove=%v",
-			hc.Runtime, hc.NetworkMode, hc.Privileged, hc.ReadonlyRootfs, hc.AutoRemove)
+	expected := cfg.Runner.HostConfig
+	if expected == nil {
+		t.Fatal("テスト設定の HostConfig が nil です")
 	}
-	if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" || !slices.Equal(hc.CapAdd, config.DindCapabilities()) {
-		t.Fatalf("daemon 上の capability が契約と一致しません: drop=%v add=%v", hc.CapDrop, hc.CapAdd)
+	if hc.Runtime != expected.Runtime || hc.NetworkMode != expected.NetworkMode || hc.Privileged != expected.Privileged {
+		t.Fatalf("daemon 上の HostConfig が設定値と一致しません: runtime=%q network=%q privileged=%v", hc.Runtime, hc.NetworkMode, hc.Privileged)
 	}
-	if hc.IpcMode != container.IPCModePrivate || hc.CgroupnsMode != container.CgroupnsModePrivate ||
-		hc.PidMode != "" || hc.UTSMode != "" || hc.UsernsMode != "" {
-		t.Fatalf("daemon 上の namespace 設定が不正です: ipc=%q cgroupns=%q pid=%q uts=%q userns=%q",
-			hc.IpcMode, hc.CgroupnsMode, hc.PidMode, hc.UTSMode, hc.UsernsMode)
+	if !slices.Equal(hc.CapDrop, expected.CapDrop) || !slices.Equal(hc.CapAdd, expected.CapAdd) {
+		t.Fatalf("daemon 上の capability が設定値と一致しません: drop=%v add=%v", hc.CapDrop, hc.CapAdd)
 	}
-	if hc.RestartPolicy.Name != container.RestartPolicyDisabled || hc.Init == nil || !*hc.Init ||
-		!slices.Contains(hc.SecurityOpt, "no-new-privileges") {
-		t.Fatalf("daemon 上の restart/init/no-new-privileges が不正です: restart=%q init=%v security=%v",
-			hc.RestartPolicy.Name, hc.Init, hc.SecurityOpt)
-	}
-	if len(hc.Binds) != 0 || len(hc.Devices) != 0 || len(hc.DeviceRequests) != 0 || len(hc.VolumesFrom) != 0 {
-		t.Fatalf("daemon 上に禁止 mount/device が存在します: binds=%v devices=%v", hc.Binds, hc.Devices)
-	}
-	// /var/lib/docker is a tmpfs (mode 0700, size dindRunner.storageSize).
-	if len(hc.Mounts) != 1 {
-		t.Fatalf("daemon 上の mount が 1 個ではありません: %+v", hc.Mounts)
+	if len(hc.Mounts) != len(expected.Mounts) || len(hc.Mounts) != 1 {
+		t.Fatalf("daemon 上の mount が設定値と一致しません: got=%+v want=%+v", hc.Mounts, expected.Mounts)
 	}
 	m := hc.Mounts[0]
-	if m.Type != mount.TypeTmpfs || m.Target != "/var/lib/docker" || m.Source != "" || m.TmpfsOptions == nil ||
-		m.TmpfsOptions.SizeBytes != int64(cfg.DindRunner.StorageSize) || m.TmpfsOptions.Mode != 0o700 {
-		t.Fatalf("daemon 上の /var/lib/docker tmpfs が不正です: %+v", m)
-	}
-
-	res := &hc.Resources
-	if res.NanoCPUs != int64(cfg.Runner.CPU) || res.Memory != int64(cfg.Runner.Memory) || res.MemorySwap != int64(cfg.Runner.MemorySwap) ||
-		res.PidsLimit == nil || *res.PidsLimit != cfg.Runner.PidsLimit {
-		t.Fatalf("daemon 上の resource が不正です: cpu=%d memory=%d swap=%d pids=%v",
-			res.NanoCPUs, res.Memory, res.MemorySwap, res.PidsLimit)
+	wantMount := expected.Mounts[0]
+	if m.Type != mount.TypeTmpfs || m.Target != wantMount.Target || m.TmpfsOptions == nil || wantMount.TmpfsOptions == nil ||
+		m.TmpfsOptions.SizeBytes != wantMount.TmpfsOptions.SizeBytes || m.TmpfsOptions.Mode != wantMount.TmpfsOptions.Mode {
+		t.Fatalf("daemon 上の tmpfs が設定値と一致しません: got=%+v want=%+v", m, wantMount)
 	}
 }
 
@@ -289,7 +256,7 @@ func runtimeNames(runtimes map[string]system.RuntimeWithStatus) []string {
 }
 
 // TestDindLifecycle_RunscDaemon checks the prerequisites, prepares the
-// image, checks the OCI label contract and verifies two paths.
+// image, and verifies two paths with an explicit HostConfig.
 func TestDindLifecycle_RunscDaemon(t *testing.T) {
 	c, err := New(integrationHost, 2*time.Minute)
 	if err != nil {
@@ -304,21 +271,11 @@ func TestDindLifecycle_RunscDaemon(t *testing.T) {
 		t.Fatalf("Docker Info を取得できませんでした: %v", err)
 	}
 
-	// dind-runner is fixed to runsc. A missing registration is a skip with
-	// a reason (no runc substitute).
+	// This test intentionally selects runsc in its user HostConfig.
 	if _, ok := info.Info.Runtimes["runsc"]; !ok {
-		t.Skipf("Docker daemon に runsc runtime が登録されていません (dind-runner profile は runsc 固定)。登録済み runtime: %v", runtimeNames(info.Info.Runtimes))
+		t.Skipf("Docker daemon に runsc runtime が登録されていません。登録済み runtime: %v", runtimeNames(info.Info.Runtimes))
 	}
-	// runtimeArgs cannot be introspected, so skip with a reason unless the
-	// visual verification is declared.
-	if os.Getenv(dindRuntimeArgsVerifiedEnv) != "1" {
-		t.Skipf("host daemon の runsc runtimeArgs (--net-raw、--allow-packet-socket-write) の目視確認がありません。%s=1 を設定してください", dindRuntimeArgsVerifiedEnv)
-	}
-
 	imageRef := prepareDindImage(t, c)
-	if err := c.ValidateImageContract(t.Context(), imageRef, config.ProfileDindRunner); err != nil {
-		t.Fatalf("dind image の OCI label contract を満たしません: %v", err)
-	}
 	// Create the unmanaged sentinel as a verification target (shared helper
 	// with standard).
 	createUnmanagedSentinel(t, c, imageRef)
@@ -371,10 +328,35 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 	}
 	identity := model.RunnerIdentity{ScaleSetID: scaleSetID, RunnerID: runnerID, RunnerName: runnerName}
 
-	cfg := testConfig(t, config.ProfileDindRunner, "runsc")
+	cfg := testConfig(t, "runsc")
 	cfg.Runner.Image = imageRef
-	// inner dockerd may use /tmp, so do not add the standard /tmp ro tmpfs.
-	cfg.Runner.Tmpfs = nil
+	// The dind image needs these settings; they are ordinary user input.
+	cfg.Runner.HostConfig = &container.HostConfig{
+		Runtime:     "runsc",
+		NetworkMode: "bridge",
+		CapDrop:     []string{"ALL"},
+		CapAdd: []string{
+			"AUDIT_WRITE", "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL",
+			"MKNOD", "NET_BIND_SERVICE", "NET_ADMIN", "NET_RAW", "SETFCAP",
+			"SETGID", "SETPCAP", "SETUID", "SYS_ADMIN", "SYS_CHROOT", "SYS_PTRACE",
+		},
+		SecurityOpt:   []string{"no-new-privileges"},
+		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyDisabled},
+		Init:          boolPointer(true),
+		Mounts: []mount.Mount{{
+			Type:   mount.TypeTmpfs,
+			Target: "/var/lib/docker",
+			TmpfsOptions: &mount.TmpfsOptions{
+				SizeBytes: 2 * 1024 * 1024 * 1024,
+				Mode:      0o700,
+			},
+		}},
+		Resources: container.Resources{
+			NanoCPUs:   2e9,
+			Memory:     4 * 1024 * 1024 * 1024,
+			MemorySwap: 6 * 1024 * 1024 * 1024,
+		},
+	}
 	input := testInput(cfg)
 	input.Identity = identity
 	input.ContainerName = containerName
@@ -410,7 +392,7 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 	verifyDindInspectFields(t, inspect.Container, cfg, input)
 
 	if _, err := c.containerStart(t.Context(), containerID, mobyclient.ContainerStartOptions{}); err != nil {
-		t.Fatalf("containerStart が失敗しました (runsc の runtimeArgs と resource を確認してください): %v", err)
+		t.Fatalf("containerStart が失敗しました (HostConfig と image の要件を確認してください): %v", err)
 	}
 	verifyDindRun(t, c, containerID, mode)
 }

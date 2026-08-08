@@ -120,8 +120,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 // runCheck runs the check subcommand: load config, set up the logger, and
 // delegate to app.Check. check is read-only, but depending on the pull
 // policy an image pull can change the Docker image store, so the help states
-// this. The help also states that dind-runner runtimeArgs cannot be
-// verified.
+// this.
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -219,21 +218,17 @@ SIGINT/SIGTERM で graceful shutdown する。設定の詳細は config.example.
 	fs.PrintDefaults()
 }
 
-// printCheckUsage prints the check flags and description. It states the two
-// ways check is not fully read-only: the Docker image store change from
-// image pulls, and the non-verification of dind-runner runtimeArgs.
+// printCheckUsage prints the check flags and description. It states that an
+// image pull can change the Docker image store.
 func printCheckUsage(fs *flag.FlagSet) {
 	fmt.Fprintf(fs.Output(), `Usage: gha-docker-controller check [options]
 
 check は設定の接続先が serve に必要な契約を満たすかを確認する。
 container、runner、Scale Set、network は作成・削除しない。ただし完全な
-read-only ではない点が 2 つある。
+read-only ではない点が 1 つある。
 
   1. pull policy に応じて image を pull するため、Docker image store を
      変更することがある。
-  2. dind-runner profile の runtimeArgs (--net-raw など) は公式 Docker
-     API で introspection できないため検証しない。host 側の設定は operator
-     が daemon.json を目視確認し、check は常に warning を出す。
 
 `)
 	fs.PrintDefaults()

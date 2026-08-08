@@ -126,24 +126,17 @@ func (a *app) startup(signalCtx context.Context, version, commit string) error {
 		return fmt.Errorf("serve: %w", err)
 	}
 	a.logger.Info("docker engine verified", "host", dc.Host())
-	// Check the runtime is registered before creating containers; an
-	// unregistered runtime is fatal. No trial container is created.
-	rt, err := dc.CheckRuntime(signalCtx, cfg.Docker.Runtime)
-	if err != nil {
-		return fmt.Errorf("serve: %w", err)
+	// Check an explicitly selected runtime before creating containers. An
+	// omitted runtime lets Docker use its daemon default.
+	if runtime := configuredRuntime(cfg); runtime != "" {
+		rt, err := dc.CheckRuntime(signalCtx, runtime)
+		if err != nil {
+			return fmt.Errorf("serve: %w", err)
+		}
+		a.logger.Info("docker runtime verified", "runtime", runtime, "is_default", rt.IsDefault)
 	}
-	a.logger.Info("docker runtime verified", "runtime", cfg.Docker.Runtime, "is_default", rt.IsDefault)
-	// Only inspect the existing network object; never create one.
-	if _, err := dc.InspectNetwork(signalCtx, cfg.Runner.Network); err != nil {
-		return fmt.Errorf("serve: docker network %q: %w", cfg.Runner.Network, err)
-	}
-	a.logger.Info("docker network verified", "network", cfg.Runner.Network)
-	// Prepare the image per the pull policy and verify the profile's OCI
-	// label contract.
+	// Prepare the image per the pull policy.
 	if err := dc.EnsureImage(signalCtx, cfg.Runner.Image, cfg.Docker.PullPolicy); err != nil {
-		return fmt.Errorf("serve: %w", err)
-	}
-	if err := dc.ValidateImageContract(signalCtx, cfg.Runner.Image, cfg.Runner.Profile); err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
 	a.logger.Info("runner image ready", "image", cfg.Runner.Image, "policy", cfg.Docker.PullPolicy)

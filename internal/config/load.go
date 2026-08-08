@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"maps"
 	"os"
-	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -104,69 +102,15 @@ func resolve(raw *rawConfig) (*Config, error) {
 
 	// Docker
 	c.Docker.Host = normalizeDockerHost(optionalString(raw.Docker.Host, DefaultDockerHost))
-	c.Docker.Runtime = strings.TrimSpace(optionalString(raw.Docker.Runtime, DefaultRuntime))
-	dockerNetwork := strings.TrimSpace(optionalString(raw.Docker.Network, DefaultNetwork))
-	c.Docker.Network = dockerNetwork
 	c.Docker.PullPolicy = strings.TrimSpace(optionalString(raw.Docker.PullPolicy, DefaultPullPolicy))
 
 	// Runner
 	c.Runner.Image = strings.TrimSpace(raw.Runner.Image)
-	c.Runner.Profile = strings.TrimSpace(optionalString(raw.Runner.Profile, DefaultProfile))
-	if raw.Runner.CPU != nil {
-		c.Runner.CPU = *raw.Runner.CPU
-	}
-	if raw.Runner.Memory != nil {
-		c.Runner.Memory = *raw.Runner.Memory
-	}
-	if raw.Runner.MemorySwap != nil {
-		c.Runner.MemorySwap = *raw.Runner.MemorySwap
-	}
-	if raw.Runner.PidsLimit != nil {
-		c.Runner.PidsLimit = *raw.Runner.PidsLimit
+	if raw.Runner.HostConfig != nil {
+		c.Runner.HostConfig = &raw.Runner.HostConfig.HostConfig
 	}
 	c.Runner.ProvisioningTimeout = optionalDuration(raw.Runner.ProvisioningTimeout, Duration(DefaultProvisioningTimeout))
 	c.Runner.StopTimeout = optionalDuration(raw.Runner.StopTimeout, Duration(DefaultStopTimeout))
-	c.Runner.Ulimit = raw.Runner.Ulimit
-	// tmpfs normalizes the YAML map[path]options into an internal list sorted
-	// by path (either "path" or "path:options").
-	c.Runner.Tmpfs = normalizeTmpfs(raw.Runner.Tmpfs)
-	c.Runner.ReadOnlyRootfs = optionalBool(raw.Runner.ReadOnlyRootfs, false)
-	c.Runner.NoNewPrivileges = optionalBool(raw.Runner.NoNewPrivileges, true)
-	// CapDrop defaults to ALL. HostConfig CapDrop=["ALL"] is fixed for the
-	// container.
-	if raw.Runner.CapDrop != nil {
-		c.Runner.CapDrop = *raw.Runner.CapDrop
-	} else {
-		c.Runner.CapDrop = []string{"ALL"}
-	}
-	if raw.Runner.CapAdd != nil {
-		c.Runner.CapAdd = *raw.Runner.CapAdd
-	} else if c.Runner.Profile == ProfileDindRunner {
-		// dind-runner applies the 17 dindCapAdd capabilities by default.
-		c.Runner.CapAdd = DindCapabilities()
-	}
-	if raw.Runner.Seccomp != nil {
-		c.Runner.Seccomp = *raw.Runner.Seccomp
-	}
-	if raw.Runner.AppArmor != nil {
-		c.Runner.AppArmor = *raw.Runner.AppArmor
-	}
-	if raw.Runner.Network != nil {
-		c.Runner.Network = strings.TrimSpace(*raw.Runner.Network)
-	} else {
-		// When runner.network is unset it inherits docker.network.
-		c.Runner.Network = dockerNetwork
-	}
-	c.Runner.DNS = raw.Runner.DNS
-	c.Runner.ExtraHosts = raw.Runner.ExtraHosts
-
-	// DindRunner
-	c.DindRunner.Storage = strings.TrimSpace(optionalString(raw.DindRunner.Storage, DefaultDindStorage))
-	if raw.DindRunner.StorageSize != nil {
-		c.DindRunner.StorageSize = *raw.DindRunner.StorageSize
-	} else {
-		c.DindRunner.StorageSize = DefaultDindStorageSize
-	}
 
 	// Health / Shutdown / Log
 	c.Health.Listen = strings.TrimSpace(optionalString(raw.Health.Listen, DefaultHealthListen))
@@ -245,39 +189,9 @@ func optionalInt(v *int, def int) int {
 	return *v
 }
 
-func optionalBool(v *bool, def bool) bool {
-	if v == nil {
-		return def
-	}
-	return *v
-}
-
 func optionalDuration(v *Duration, def Duration) Duration {
 	if v == nil {
 		return def
 	}
 	return *v
-}
-
-// normalizeTmpfs normalizes the YAML map[path]options into the internal
-// []string form. Each element is the bare path when options are empty and
-// "path:options" otherwise. The order is fixed to lexicographic (byte) order
-// of paths; duplicate paths are already rejected by YAML duplicate key
-// detection. The old sequence ([]string) form is rejected as a schema type
-// mismatch.
-func normalizeTmpfs(raw map[string]string) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	paths := slices.Collect(maps.Keys(raw))
-	slices.Sort(paths)
-	out := make([]string, 0, len(paths))
-	for _, p := range paths {
-		spec := strings.TrimSpace(p)
-		if opts := strings.TrimSpace(raw[p]); opts != "" {
-			spec += ":" + opts
-		}
-		out = append(out, spec)
-	}
-	return out
 }

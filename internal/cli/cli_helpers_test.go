@@ -48,10 +48,6 @@ scaleSet:
   name: prod
 runner:
   image: ghcr.io/actions/actions-runner:2.336.0
-  cpu: "1"
-  memory: 1GiB
-  memorySwap: 1GiB
-  pidsLimit: 128
 `, secretPath)
 }
 

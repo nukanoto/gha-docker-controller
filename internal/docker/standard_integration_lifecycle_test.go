@@ -1,6 +1,6 @@
 //go:build integration
 
-// standard_integration_lifecycle_test.go verifies the standard profile
+// standard_integration_lifecycle_test.go verifies the configured HostConfig
 // lifecycle and managed boundary against a real Docker daemon. It covers
 // only the public production paths (docker.New/Ping/Info, EnsureImage
 // (if-not-present), BuildManagedSpec + CreateManaged,
@@ -17,13 +17,10 @@
 // that no managed container remains, and the ID/state/label invariants of
 // the unmanaged sentinel container are checked at cleanup.
 //
-// GHDC_TEST_IMAGE can pin the image used for the standard profile (default:
-// the official runner image digest pin. The standard spec fixes
-// User=runner and /home/runner/run.sh, so an override image must have a
-// runner user and run.sh; a start error is a fail). No mock/fake/stub is
-// used, and a missing daemon is an explicit fail, not t.Skip. The runtime
-// is picked from runsc and runc in the registration list; a subtest runs
-// for every registered one (fail if neither is registered).
+// GHDC_TEST_IMAGE can pin the image (default: the official runner image
+// digest pin). No mock/fake/stub is used, and a missing daemon is an explicit
+// fail, not t.Skip. The runtime is picked from runsc and runc in the
+// registration list; a subtest runs for every registered one.
 package docker
 
 import (
@@ -60,7 +57,7 @@ const (
 	integrationScaleSetName = "standard-integration-test"
 )
 
-// TestStandardLifecycle_ManagedBoundary verifies the standard profile
+// TestStandardLifecycle_ManagedBoundary verifies the configured HostConfig
 // lifecycle and managed boundary against a real daemon. A missing daemon is
 // a fail; every registered runtime becomes a subtest with runsc preferred,
 // and each subtest uses unique managed labels for scale-set-id / runner-id.
@@ -89,7 +86,7 @@ func TestStandardLifecycle_ManagedBoundary(t *testing.T) {
 		runtimes = append(runtimes, "runc")
 	}
 	if len(runtimes) == 0 {
-		t.Fatalf("Docker daemon に runsc も runc も登録されていません (standard profile を検証できません): %v", info.Info.Runtimes)
+		t.Fatalf("Docker daemon に runsc も runc も登録されていません: %v", info.Info.Runtimes)
 	}
 
 	for _, runtime := range runtimes {
@@ -153,7 +150,7 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 	// Build the immutable spec and create. Only the identity and name are
 	// replaced with unique values; the rest uses the same standard settings
 	// as the unit tests.
-	cfg := testConfig(t, config.ProfileStandard, runtime)
+	cfg := testConfig(t, runtime)
 	cfg.Runner.Image = imageRef
 	input := testInput(cfg)
 	input.Identity = identity
@@ -204,7 +201,7 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 
 	// Verify with inspect alone that the security fields really exist on the
 	// daemon.
-	verifyInspectSecurityFields(t, inspect.Container, cfg, runtime, input)
+	verifyInspectHostConfig(t, inspect.Container, cfg, input)
 
 	// The start uses the production path (StartManaged). Before that, verify
 	// against the real daemon that a zero identity and an identity mismatch
@@ -230,20 +227,14 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 	}
 
 	// StartManaged with the correct identity starts only after the fresh
-	// inspect passes the full six-label validation. The default image makes
-	// the runner exit immediately on the invalid JIT config. A start
-	// response error is an image/runtime contract violation; observing
-	// further is pointless, so it is a fail as-is.
+	// inspect passes the full six-label validation. The test HostConfig keeps
+	// the official image observable without changing its image command.
 	if _, err := c.StartManaged(t.Context(), containerID, identity); err != nil {
 		t.Fatalf("StartManaged が失敗しました: %v", err)
 	}
 
-	// Wait for the exit. The default image exits immediately, but a long
-	// running runner is also valid, so a timeout is acceptable (the wait
-	// timeout path intentionally doubles as the verification of the long
-	// runner cleanup, where CleanupManaged stops a still-running
-	// container).
-	waitCtx, waitCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	// The explicit restart policy keeps this fixture running until cleanup.
+	waitCtx, waitCancel := context.WithTimeout(t.Context(), 10*time.Second)
 	waitResult, err := c.WaitContainer(waitCtx, containerID, mobyclient.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	waitCancel()
 	if err != nil {

@@ -125,6 +125,12 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	if len(items) != 0 {
 		t.Fatalf("一意な scale-set-id %d に既存 container があります: %+v", targetScaleSetID, items)
 	}
+	// Use Docker defaults for the exited fixture. The running fixture below
+	// uses an explicit restart policy because the pinned image has a shell
+	// command that exits immediately.
+	exitedCfg := *cfg
+	exitedCfg.Runner = cfg.Runner
+	exitedCfg.Runner.HostConfig = nil
 
 	// Never leave anything behind: cleanup uses individual registrations (LIFO)
 	// so one failure does not interrupt the others. First Shutdown joins the
@@ -159,7 +165,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	// exited fixture: create and start it, then wait for exit (the default
 	// image exits immediately; a non-exiting override image is moved to exited
 	// via managed stop).
-	fx.exited = createManagedFixture(t, c, cfg, exitedIdentity, exitedName)
+	fx.exited = createManagedFixture(t, c, &exitedCfg, exitedIdentity, exitedName)
 	if _, err := c.StartManaged(t.Context(), fx.exited, exitedIdentity); err != nil {
 		// A start error still moves to exited/created, both Recover cleanup targets.
 		t.Logf("exited fixture の StartManaged が error を返しました: %v", err)
@@ -255,7 +261,7 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	}
 }
 
-// scalerTestConfig builds a standard profile config (GitHub is dummy PAT only).
+// scalerTestConfig builds a config with an explicit user HostConfig.
 func scalerTestConfig(runtime, imageRef string) *config.Config {
 	return &config.Config{
 		GitHub: config.GitHubConfig{
@@ -267,25 +273,19 @@ func scalerTestConfig(runtime, imageRef string) *config.Config {
 		ScaleSet: config.ScaleSetConfig{Name: integrationScaleSetName, RunnerGroup: "default", MinRunners: 0, MaxRunners: 4},
 		Docker: config.DockerConfig{
 			Host:       integrationHost,
-			Runtime:    runtime,
-			Network:    "bridge",
 			PullPolicy: config.PullPolicyIfNotPresent,
 		},
 		Runner: config.RunnerConfig{
-			Image:               imageRef,
-			Profile:             config.ProfileStandard,
-			CPU:                 config.NanoCPUs(2e9),
-			Memory:              config.Memory(4 * 1024 * 1024 * 1024),
-			MemorySwap:          config.Memory(6 * 1024 * 1024 * 1024),
-			PidsLimit:           512,
+			Image: imageRef,
+			HostConfig: &container.HostConfig{
+				Runtime:       runtime,
+				NetworkMode:   "bridge",
+				RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyAlways},
+			},
 			ProvisioningTimeout: config.Duration(5 * time.Minute),
 			StopTimeout:         config.Duration(30 * time.Second),
-			CapDrop:             []string{"ALL"},
-			NoNewPrivileges:     true,
-			Network:             "bridge",
 		},
-		DindRunner: config.DindRunnerConfig{StorageSize: config.DefaultDindStorageSize},
-		Shutdown:   config.ShutdownConfig{BusyPolicy: config.ShutdownPolicyLeave},
+		Shutdown: config.ShutdownConfig{BusyPolicy: config.ShutdownPolicyLeave},
 	}
 }
 

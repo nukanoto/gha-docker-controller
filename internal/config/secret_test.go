@@ -180,7 +180,7 @@ func TestLoad_SecretNotLeakedOnFailure(t *testing.T) {
 	// PAT variant: GITHUB_TOKEN is valid but another field is invalid.
 	token := "ghp_S3cr3t-pat-value-never-leak"
 	t.Setenv("GITHUB_TOKEN", token)
-	bad := strings.Replace(patRepoYAML, "  image: ghcr.io/actions/actions-runner:2.336.0\n", "  image: ghcr.io/actions/actions-runner:latest\n", 1)
+	bad := strings.Replace(patRepoYAML, "  image: ubuntu\n", "  image: ubuntu:bad!\n", 1)
 	_, _, err := Load(writeConfig(t, bad))
 	// The expected field path is checked by partial match on the error body,
 	// but the failure branch never prints the error body (prevents
