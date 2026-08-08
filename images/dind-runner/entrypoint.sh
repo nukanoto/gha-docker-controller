@@ -194,6 +194,8 @@ if (( shutdown_requested != 0 )); then
 fi
 
 export DOCKER_HOST="unix:///var/run/docker.sock"
+# Docker assigns HOME from PID 1, while the runner runs as a non-root user.
+export HOME=/home/runner
 log "Starting runner"
 setpriv --reuid=runner --regid=runner --init-groups --no-new-privs /home/runner/run.sh &
 runner_pid=$!
