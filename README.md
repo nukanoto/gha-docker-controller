@@ -19,6 +19,16 @@
 You can run the application using Docker Compose.
 
 ```yaml
+services:
+  controller:
+    image: ghcr.io/nukanoto/gha-docker-controller:latest
+    pull_policy: always
+    restart: on-failure
+    stop_grace_period: 8m
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config.yaml:/etc/gha-docker-controller/config.yaml:ro
+      - ./gha-github-app.pem:/etc/gha-docker-controller/github-app.pem
 ```
 
 ## GitHub Authentication
