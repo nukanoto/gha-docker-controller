@@ -37,24 +37,24 @@ const (
 func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	c, err := docker.New(integrationHost, 2*time.Minute)
 	if err != nil {
-		t.Fatalf("Docker client を作成できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to create Docker client; missing daemon is a test failure: %v", err)
 	}
 	defer c.Close()
 	if _, err := c.Ping(t.Context()); err != nil {
-		t.Fatalf("Docker daemon に接続できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to connect to Docker daemon; missing daemon is a test failure: %v", err)
 	}
 
 	// Prefer runsc so this test also covers the production runtime path.
 	info, err := c.Info(t.Context())
 	if err != nil {
-		t.Fatalf("Docker Info を取得できませんでした: %v", err)
+		t.Fatalf("failed to get Docker Info: %v", err)
 	}
 	runtime := "runc"
 	if _, ok := info.Info.Runtimes["runsc"]; ok {
 		runtime = "runsc"
 	}
 	if _, ok := info.Info.Runtimes[runtime]; !ok {
-		t.Fatalf("Docker daemon に runsc も runc も登録されていません: %v", info.Info.Runtimes)
+		t.Fatalf("Docker daemon has neither runsc nor runc registered: %v", info.Info.Runtimes)
 	}
 
 	// Allow local images while keeping the default reproducible.
@@ -65,13 +65,13 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	pullCtx, pullCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer pullCancel()
 	if err := c.EnsureImage(pullCtx, imageRef, config.PullPolicyIfNotPresent); err != nil {
-		t.Fatalf("image %s を用意できませんでした (GHDC_TEST_IMAGE で local の pinned image を指定できます): %v", imageRef, err)
+		t.Fatalf("failed to prepare image %s; use GHDC_TEST_IMAGE to select a local pinned image: %v", imageRef, err)
 	}
 
 	// Create the unmanaged control with the raw SDK because CreateManaged adds labels.
 	raw, err := mobyclient.New(mobyclient.WithHost(integrationHost), mobyclient.WithTimeout(2*time.Minute))
 	if err != nil {
-		t.Fatalf("raw Moby client を作成できませんでした: %v", err)
+		t.Fatalf("failed to create raw Moby client: %v", err)
 	}
 	defer raw.Close()
 
@@ -89,20 +89,20 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	cfg := scalerTestConfig(runtime, imageRef)
 	scalesetClient, err := scaleset.New(cfg, "9.9.9-test", "test-commit")
 	if err != nil {
-		t.Fatalf("scaleset client を dummy PAT で構築できませんでした: %v", err)
+		t.Fatalf("failed to construct Scale Set client with dummy PAT: %v", err)
 	}
 	s, err := NewDockerScaler(context.Background(), c, scalesetClient, cfg, int(targetScaleSetID), "9.9.9-test", nil)
 	if err != nil {
-		t.Fatalf("NewDockerScaler が失敗しました: %v", err)
+		t.Fatalf("NewDockerScaler failed: %v", err)
 	}
 
 	// Confirm the random identity does not collide with an existing fixture.
 	items, err := c.ListManaged(t.Context(), targetScaleSetID)
 	if err != nil {
-		t.Fatalf("ListManaged が失敗しました: %v", err)
+		t.Fatalf("ListManaged failed: %v", err)
 	}
 	if len(items) != 0 {
-		t.Fatalf("一意な scale-set-id %d に既存 container があります: %+v", targetScaleSetID, items)
+		t.Fatalf("unique scale-set-id %d already has containers: %+v", targetScaleSetID, items)
 	}
 	// Let the exited fixture use Docker defaults; the running fixture overrides them.
 	exitedCfg := *cfg
@@ -118,10 +118,10 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		defer cancel()
 		items, err := c.ListManaged(ctx, targetScaleSetID)
 		if err != nil {
-			t.Fatalf("cleanup 後の ListManaged が失敗しました: %v", err)
+			t.Fatalf("ListManaged failed after cleanup: %v", err)
 		}
 		if len(items) != 0 {
-			t.Fatalf("cleanup 後に managed container が残っています: %+v", items)
+			t.Fatalf("managed containers remain after cleanup: %+v", items)
 		}
 	})
 	t.Cleanup(func() { removeUnmanagedFixture(t, raw, fx.unmanaged) })
@@ -132,14 +132,14 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		if err := s.Shutdown(ctx); err != nil {
-			t.Errorf("Shutdown が error を返しました: %v", err)
+			t.Errorf("Shutdown returned an error: %v", err)
 		}
 	})
 
 	// The exited fixture must be present when Recover enumerates the daemon.
 	fx.exited = createManagedFixture(t, c, &exitedCfg, exitedIdentity, exitedName)
 	if _, err := c.StartManaged(t.Context(), fx.exited, exitedIdentity); err != nil {
-		t.Logf("exited fixture の StartManaged が error を返しました: %v", err)
+		t.Logf("StartManaged returned an error for the exited fixture: %v", err)
 	}
 	waitExited(t, c, fx.exited, exitedIdentity)
 
@@ -152,10 +152,10 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	// Start this fixture last so Recover observes it as running.
 	fx.running = createManagedFixture(t, c, cfg, runningIdentity, runningName)
 	if _, err := c.StartManaged(t.Context(), fx.running, runningIdentity); err != nil {
-		t.Fatalf("running fixture を start できませんでした: %v", err)
+		t.Fatalf("failed to start running fixture: %v", err)
 	}
 	if err := s.Recover(t.Context()); err != nil {
-		t.Fatalf("Recover が失敗しました: %v", err)
+		t.Fatalf("Recover failed: %v", err)
 	}
 
 	// Running fixtures are protected and counted.
@@ -164,44 +164,44 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	protectedCount := len(s.state.protected)
 	s.state.mu.Unlock()
 	if !runningProtected || protectedCount != 1 || s.state.count() != 1 {
-		t.Fatalf("Recover 後の state が不正です: protected 数=%d running 含む=%v count=%d (want 1/true/1)",
+		t.Fatalf("state after Recover is invalid: protected=%d running=%v count=%d (want 1/true/1)",
 			protectedCount, runningProtected, s.state.count())
 	}
 
 	// Recover removes exited fixtures.
 	if _, err := c.ContainerInspect(t.Context(), fx.exited, mobyclient.ContainerInspectOptions{}); !cerrdefs.IsNotFound(err) {
-		t.Fatalf("exited fixture が除去されていません (inspect error=%v)", err)
+		t.Fatalf("exited fixture was not removed (inspect error=%v)", err)
 	}
 
 	// A different Scale Set is outside the list boundary.
 	otherInspect, err := c.ContainerInspect(t.Context(), fx.other, mobyclient.ContainerInspectOptions{})
 	if err != nil {
-		t.Fatalf("別 Scale Set fixture の inspect が失敗しました: %v", err)
+		t.Fatalf("failed to inspect fixture from another Scale Set: %v", err)
 	}
 	labels := otherInspect.Container.Config.Labels
 	if labels[model.ManagedLabelKey] != model.ManagedLabelValue ||
 		labels[model.ScaleSetIDLabelKey] != strconv.FormatInt(otherScaleSetID, 10) {
-		t.Fatalf("別 Scale Set fixture の managed label が不正です: %v", labels)
+		t.Fatalf("managed label on another Scale Set fixture is invalid: %v", labels)
 	}
 	if got := containerState(t, c, fx.other); got != otherState {
-		t.Fatalf("別 Scale Set fixture の状態が変化しました: %q → %q", otherState, got)
+		t.Fatalf("another Scale Set fixture changed state: %q -> %q", otherState, got)
 	}
 
 	// Unmanaged containers are outside the controller boundary.
 	if got := containerState(t, c, fx.unmanaged); got != unmanagedState {
-		t.Fatalf("unmanaged fixture の状態が変化しました: %q → %q", unmanagedState, got)
+		t.Fatalf("unmanaged fixture changed state: %q -> %q", unmanagedState, got)
 	}
 
 	// Stop the protected fixture through the production path.
 	runningMC, err := c.VerifyManaged(t.Context(), fx.running, runningIdentity)
 	if err != nil {
 		if !cerrdefs.IsNotFound(err) {
-			t.Fatalf("running fixture の VerifyManaged が失敗しました: %v", err)
+			t.Fatalf("VerifyManaged failed for running fixture: %v", err)
 		}
 	} else {
 		timeout := 5
 		if _, err := c.StopManaged(t.Context(), runningMC, runningIdentity, mobyclient.ContainerStopOptions{Timeout: &timeout}); err != nil && !cerrdefs.IsNotFound(err) {
-			t.Fatalf("running fixture の StopManaged が失敗しました: %v", err)
+			t.Fatalf("StopManaged failed for running fixture: %v", err)
 		}
 	}
 
@@ -210,19 +210,19 @@ func TestScalerRecover_ManagedBoundary(t *testing.T) {
 	for {
 		items, err := c.ListManaged(t.Context(), targetScaleSetID)
 		if err != nil {
-			t.Fatalf("ListManaged が失敗しました: %v", err)
+			t.Fatalf("ListManaged failed: %v", err)
 		}
 		if s.state.count() == 0 && len(items) == 0 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("wait 監視による除去を待てませんでした (count=%d managed=%d)", s.state.count(), len(items))
+			t.Fatalf("timed out waiting for the wait watcher to remove the fixture (count=%d managed=%d)", s.state.count(), len(items))
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	select {
 	case waitErr := <-s.ErrCh():
-		t.Fatalf("wait 監視が error を通知しました: %v", waitErr)
+		t.Fatalf("wait watcher reported an error: %v", waitErr)
 	default:
 	}
 }
@@ -262,7 +262,7 @@ func fixtureIdentity(t *testing.T, scaleSetID, runnerID int64) (model.RunnerIden
 	runnerName := model.RunnerName(integrationScaleSetName, suffix)
 	containerName := model.ContainerName(integrationScaleSetName, runnerID, suffix)
 	if !model.ValidRunnerName(runnerName) || len(containerName) > 63 {
-		t.Fatalf("生成した runner/container name が契約外です: runner=%q container=%q", runnerName, containerName)
+		t.Fatalf("generated runner/container names violate the contract: runner=%q container=%q", runnerName, containerName)
 	}
 	return model.RunnerIdentity{ScaleSetID: scaleSetID, RunnerID: runnerID, RunnerName: runnerName}, containerName
 }
@@ -281,14 +281,14 @@ func createManagedFixture(t *testing.T, c *docker.Client, cfg *config.Config, id
 	}
 	spec, err := docker.BuildManagedSpec(input)
 	if err != nil {
-		t.Fatalf("BuildManagedSpec が失敗しました: %v", err)
+		t.Fatalf("BuildManagedSpec failed: %v", err)
 	}
 	created, err := c.CreateManaged(t.Context(), spec)
 	if err != nil {
-		t.Fatalf("CreateManaged が失敗しました: %v", err)
+		t.Fatalf("CreateManaged failed: %v", err)
 	}
 	if created.ID == "" {
-		t.Fatalf("CreateManaged が空の container ID を返しました")
+		t.Fatalf("CreateManaged returned an empty container ID")
 	}
 	return created.ID
 }
@@ -306,14 +306,14 @@ func waitExited(t *testing.T, c *docker.Client, containerID string, identity mod
 	defer stopCancel()
 	mc, err := c.VerifyManaged(stopCtx, containerID, identity)
 	if err != nil {
-		t.Fatalf("exited fixture の VerifyManaged が失敗しました: %v", err)
+		t.Fatalf("VerifyManaged failed for exited fixture: %v", err)
 	}
 	timeout := 5
 	if _, err := c.StopManaged(stopCtx, mc, identity, mobyclient.ContainerStopOptions{Timeout: &timeout}); err != nil {
-		t.Fatalf("exited fixture の StopManaged が失敗しました: %v", err)
+		t.Fatalf("StopManaged failed for exited fixture: %v", err)
 	}
 	if _, err := c.WaitContainer(stopCtx, containerID, mobyclient.ContainerWaitOptions{Condition: container.WaitConditionNotRunning}); err != nil {
-		t.Fatalf("exited fixture を終了できませんでした: %v", err)
+		t.Fatalf("failed to stop exited fixture: %v", err)
 	}
 }
 
@@ -327,7 +327,7 @@ func createUnmanagedFixture(t *testing.T, raw *mobyclient.Client, imageRef strin
 		},
 	})
 	if err != nil {
-		t.Fatalf("unmanaged fixture の ContainerCreate が失敗しました: %v", err)
+		t.Fatalf("ContainerCreate failed for unmanaged fixture: %v", err)
 	}
 	return created.ID
 }
@@ -343,7 +343,7 @@ func createRawManagedFixture(t *testing.T, raw *mobyclient.Client, imageRef stri
 		},
 	})
 	if err != nil {
-		t.Fatalf("raw ContainerCreate が失敗しました: %v", err)
+		t.Fatalf("raw ContainerCreate failed: %v", err)
 	}
 	return created.ID
 }
@@ -352,23 +352,23 @@ func createRawManagedFixture(t *testing.T, raw *mobyclient.Client, imageRef stri
 func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 	c, err := docker.New(integrationHost, 2*time.Minute)
 	if err != nil {
-		t.Fatalf("Docker client を作成できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to create Docker client; missing daemon is a test failure: %v", err)
 	}
 	defer c.Close()
 	if _, err := c.Ping(t.Context()); err != nil {
-		t.Fatalf("Docker daemon に接続できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to connect to Docker daemon; missing daemon is a test failure: %v", err)
 	}
 
 	info, err := c.Info(t.Context())
 	if err != nil {
-		t.Fatalf("Docker Info を取得できませんでした: %v", err)
+		t.Fatalf("failed to get Docker Info: %v", err)
 	}
 	runtime := "runc"
 	if _, ok := info.Info.Runtimes["runsc"]; ok {
 		runtime = "runsc"
 	}
 	if _, ok := info.Info.Runtimes[runtime]; !ok {
-		t.Fatalf("Docker daemon に runsc も runc も登録されていません: %v", info.Info.Runtimes)
+		t.Fatalf("Docker daemon has neither runsc nor runc registered: %v", info.Info.Runtimes)
 	}
 
 	imageRef := os.Getenv("GHDC_TEST_IMAGE")
@@ -378,12 +378,12 @@ func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 	pullCtx, pullCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer pullCancel()
 	if err := c.EnsureImage(pullCtx, imageRef, config.PullPolicyIfNotPresent); err != nil {
-		t.Fatalf("image %s を用意できませんでした (GHDC_TEST_IMAGE で local の pinned image を指定できます): %v", imageRef, err)
+		t.Fatalf("failed to prepare image %s; use GHDC_TEST_IMAGE to select a local pinned image: %v", imageRef, err)
 	}
 
 	raw, err := mobyclient.New(mobyclient.WithHost(integrationHost), mobyclient.WithTimeout(2*time.Minute))
 	if err != nil {
-		t.Fatalf("raw Moby client を作成できませんでした: %v", err)
+		t.Fatalf("failed to create raw Moby client: %v", err)
 	}
 	defer raw.Close()
 
@@ -394,11 +394,11 @@ func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 	cfg := scalerTestConfig(runtime, imageRef)
 	scalesetClient, err := scaleset.New(cfg, "9.9.9-test", "test-commit")
 	if err != nil {
-		t.Fatalf("scaleset client を dummy PAT で構築できませんでした: %v", err)
+		t.Fatalf("failed to construct Scale Set client with dummy PAT: %v", err)
 	}
 	s, err := NewDockerScaler(context.Background(), c, scalesetClient, cfg, int(targetScaleSetID), "9.9.9-test", nil)
 	if err != nil {
-		t.Fatalf("NewDockerScaler が失敗しました: %v", err)
+		t.Fatalf("NewDockerScaler failed: %v", err)
 	}
 
 	var running, malformed string
@@ -412,7 +412,7 @@ func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 	// Start a valid fixture before the malformed one to create a watch.
 	running = createManagedFixture(t, c, cfg, runningIdentity, runningName)
 	if _, err := c.StartManaged(t.Context(), running, runningIdentity); err != nil {
-		t.Fatalf("running fixture を start できませんでした: %v", err)
+		t.Fatalf("failed to start running fixture: %v", err)
 	}
 	// A non-integer runner ID must fail recovery without unsafe cleanup.
 	malformed = createRawManagedFixture(t, raw, imageRef, map[string]string{
@@ -423,18 +423,18 @@ func TestScalerRecover_MalformedLabelShutdownJoinsWatch(t *testing.T) {
 	})
 
 	if err := s.Recover(t.Context()); err == nil {
-		t.Fatalf("malformed label があるのに Recover が error を返しませんでした")
+		t.Fatalf("Recover did not return an error for malformed labels")
 	}
 
 	// Partial recovery must still allow a bounded, joined shutdown.
 	sctx, scancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if err := s.Shutdown(sctx); err != nil {
-		t.Fatalf("Shutdown が error を返しました: %v", err)
+		t.Fatalf("Shutdown returned an error: %v", err)
 	}
 	scancel()
 	select {
 	case waitErr := <-s.ErrCh():
-		t.Fatalf("shutdown が error を通知しました: %v", waitErr)
+		t.Fatalf("shutdown reported an error: %v", waitErr)
 	default:
 	}
 }
@@ -444,7 +444,7 @@ func containerState(t *testing.T, c *docker.Client, containerID string) string {
 	t.Helper()
 	inspect, err := c.ContainerInspect(t.Context(), containerID, mobyclient.ContainerInspectOptions{})
 	if err != nil {
-		t.Fatalf("container %s の inspect が失敗しました: %v", containerID, err)
+		t.Fatalf("inspect failed for container %s: %v", containerID, err)
 	}
 	return string(inspect.Container.State.Status)
 }
@@ -462,10 +462,10 @@ func cleanupManagedFixture(t *testing.T, c *docker.Client, containerID string, i
 		if cerrdefs.IsNotFound(err) {
 			return
 		}
-		t.Fatalf("managed fixture の VerifyManaged が失敗しました: %v", err)
+		t.Fatalf("VerifyManaged failed for managed fixture: %v", err)
 	}
 	if _, err := c.CleanupManaged(ctx, mc, docker.ManagedCleanupOptions{StopTimeout: 30 * time.Second}); err != nil && !cerrdefs.IsNotFound(err) {
-		t.Fatalf("managed fixture の CleanupManaged が失敗しました: %v", err)
+		t.Fatalf("CleanupManaged failed for managed fixture: %v", err)
 	}
 }
 
@@ -478,6 +478,6 @@ func removeUnmanagedFixture(t *testing.T, raw *mobyclient.Client, containerID st
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if _, err := raw.ContainerRemove(ctx, containerID, mobyclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true}); err != nil && !cerrdefs.IsNotFound(err) {
-		t.Fatalf("unmanaged fixture の削除に失敗しました: %v", err)
+		t.Fatalf("failed to remove unmanaged fixture: %v", err)
 	}
 }

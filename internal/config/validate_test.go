@@ -26,7 +26,7 @@ func runValidate(t *testing.T, name string, mutate func(*Config), wantErr string
 	errs := c.validate()
 	if wantErr == "" {
 		if len(errs) != 0 {
-			t.Fatalf("%s: 予期しない validation error です: %v", name, errs)
+			t.Fatalf("%s: unexpected validation error: %v", name, errs)
 		}
 		return
 	}
@@ -35,7 +35,7 @@ func runValidate(t *testing.T, name string, mutate func(*Config), wantErr string
 			return
 		}
 	}
-	t.Fatalf("%s: validation error %q がありません: %v", name, wantErr, errs)
+	t.Fatalf("%s: validation error %q is missing: %v", name, wantErr, errs)
 }
 
 func TestValidate_ImageReferences(t *testing.T) {

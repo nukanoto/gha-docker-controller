@@ -16,29 +16,29 @@ func TestLoad_SecretPermissionWarning(t *testing.T) {
 	doc := strings.ReplaceAll(baseConfigYAML, "__KEY__", keyPath)
 	_, warnings, err := Load(writeConfig(t, doc))
 	if err != nil {
-		t.Fatal("正常な設定が拒否されました (error 本文は秘密露出のため出力しません)")
+		t.Fatal("valid configuration was rejected; error details are omitted to prevent secret exposure")
 	}
 	if len(warnings) != 1 {
-		t.Fatalf("warning の個数が不正です: 期待値 1、実測値 %d", len(warnings))
+		t.Fatalf("unexpected warning count: want 1, got %d", len(warnings))
 	}
 	if warnings[0].Path != "github.app.privateKeyFile" {
-		t.Fatal("warning の path が不正です")
+		t.Fatal("warning path is invalid")
 	}
 	if !strings.Contains(warnings[0].Message, "set 0600") {
-		t.Fatal("warning に 0600 推奨の文言がありません (warning 本文は出力しません)")
+		t.Fatal("warning does not recommend mode 0600; warning details are omitted")
 	}
 	if strings.Contains(warnings[0].Message, keyPEM) {
-		t.Fatal("warning に秘密の本文が含まれています")
+		t.Fatal("warning contains the secret body")
 	}
 
 	strictKey := mustWriteSecret(t, "strict-key.pem", keyPEM, 0600)
 	strictDoc := strings.ReplaceAll(baseConfigYAML, "__KEY__", strictKey)
 	_, warnings, err = Load(writeConfig(t, strictDoc))
 	if err != nil {
-		t.Fatal("正常な設定が拒否されました (error 本文は秘密露出のため出力しません)")
+		t.Fatal("valid configuration was rejected; error details are omitted to prevent secret exposure")
 	}
 	if len(warnings) != 0 {
-		t.Fatal("0600 で warning が返りました (warning 本文は出力しません)")
+		t.Fatal("mode 0600 produced a warning; warning details are omitted")
 	}
 }
 
@@ -60,13 +60,13 @@ func TestLoad_GroupOtherAnyPermissionBitWarns(t *testing.T) {
 			doc := strings.ReplaceAll(baseConfigYAML, "__KEY__", keyPath)
 			_, warnings, err := Load(writeConfig(t, doc))
 			if err != nil {
-				t.Fatal("正常な設定が拒否されました (error 本文は秘密露出のため出力しません)")
+				t.Fatal("valid configuration was rejected; error details are omitted to prevent secret exposure")
 			}
 			if len(warnings) != 1 || warnings[0].Path != "github.app.privateKeyFile" {
-				t.Fatalf("permission %04o の warning が不正です (warning 本文は出力しません)", tt.perm)
+				t.Fatalf("warning is invalid for permission %04o; warning details are omitted", tt.perm)
 			}
 			if strings.Contains(warnings[0].Message, keyPEM) {
-				t.Fatal("warning に秘密の本文が含まれています")
+				t.Fatal("warning contains the secret body")
 			}
 		})
 	}
@@ -78,23 +78,23 @@ func TestLoad_SecretFileRejections(t *testing.T) {
 
 	real := filepath.Join(dir, "real.pem")
 	if err := os.WriteFile(real, []byte(keyPEM), 0600); err != nil {
-		t.Fatalf("secret file の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create secret file: %v", err)
 	}
 	link := filepath.Join(dir, "link.pem")
 	if err := os.Symlink(real, link); err != nil {
-		t.Fatalf("symlink の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create symlink: %v", err)
 	}
 	dirPath := filepath.Join(dir, "subdir")
 	if err := os.Mkdir(dirPath, 0700); err != nil {
-		t.Fatalf("directory の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create directory: %v", err)
 	}
 	empty := filepath.Join(dir, "empty.pem")
 	if err := os.WriteFile(empty, nil, 0600); err != nil {
-		t.Fatalf("secret file の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create secret file: %v", err)
 	}
 	big := filepath.Join(dir, "big.pem")
 	if err := os.WriteFile(big, bytes.Repeat([]byte("x"), 1<<20+1), 0600); err != nil {
-		t.Fatalf("secret file の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create secret file: %v", err)
 	}
 
 	tests := []struct {
@@ -112,10 +112,10 @@ func TestLoad_SecretFileRejections(t *testing.T) {
 			doc := strings.ReplaceAll(baseConfigYAML, "__KEY__", tt.keyPath)
 			_, _, err := Load(writeConfig(t, doc))
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatal("secret file の拒否が期待どおり動作しませんでした (error 本文は秘密露出のため出力しません)")
+				t.Fatal("secret file rejection differs from expectation; error details are omitted")
 			}
 			if strings.Contains(err.Error(), keyPEM) {
-				t.Fatal("error に秘密の本文が含まれています")
+				t.Fatal("error contains the secret body")
 			}
 		})
 	}
@@ -125,24 +125,24 @@ func TestLoad_SecretFileRejections(t *testing.T) {
 func TestReadSecretLimited_LimitAndGrowthDetection(t *testing.T) {
 	content, err := readSecretLimited(strings.NewReader(strings.Repeat("x", secretFileMaxSize)))
 	if err != nil {
-		t.Fatal("上限ちょうどの secret が拒否されました (error 本文は秘密露出のため出力しません)")
+		t.Fatal("content at the exact limit was rejected; error details are omitted")
 	}
 	if len(content) != secretFileMaxSize {
-		t.Fatalf("読み取り量が不正です: 期待値 %d、実測値 %d", secretFileMaxSize, len(content))
+		t.Fatalf("unexpected read size: want %d, got %d", secretFileMaxSize, len(content))
 	}
 
 	const marker = "SECRETPAYLOAD"
 	_, err = readSecretLimited(strings.NewReader(strings.Repeat(marker, (secretFileMaxSize+1)/len(marker)+1)))
 	if err == nil || !strings.Contains(err.Error(), "secret file is too large") {
-		t.Fatal("上限超過の secret が拒否されませんでした (error 本文は秘密露出のため出力しません)")
+		t.Fatal("oversized secret was not rejected; error details are omitted")
 	}
 	if strings.Contains(err.Error(), marker) {
-		t.Fatal("error に秘密の本文が含まれています")
+		t.Fatal("error contains the secret body")
 	}
 
 	content, err = readSecretLimited(strings.NewReader("small"))
 	if err != nil || string(content) != "small" {
-		t.Fatal("小さい secret の読み取りが不正です (内容は秘密のため出力しません)")
+		t.Fatal("small secret read is invalid; content is omitted")
 	}
 }
 
@@ -153,10 +153,10 @@ func TestLoad_SecretNotLeakedOnFailure(t *testing.T) {
 	bad := strings.Replace(patRepoYAML, "  image: ubuntu\n", "  image: ubuntu:bad!\n", 1)
 	_, _, err := Load(writeConfig(t, bad))
 	if err == nil || !strings.Contains(err.Error(), "runner.image") {
-		t.Fatal("validation failure が期待どおり発生しませんでした (error 本文は秘密露出のため出力しません)")
+		t.Fatal("validation failure differs from expectation; error details are omitted")
 	}
 	if strings.Contains(err.Error(), token) {
-		t.Fatal("error に PAT の本文が含まれています")
+		t.Fatal("error contains the PAT body")
 	}
 
 	// Clear the PAT so it cannot conflict with the App.
@@ -166,9 +166,9 @@ func TestLoad_SecretNotLeakedOnFailure(t *testing.T) {
 	badDoc = strings.Replace(badDoc, "  name: prod\n", "  name: \"bad name!\"\n", 1)
 	_, _, err = Load(writeConfig(t, badDoc))
 	if err == nil || !strings.Contains(err.Error(), "scaleSet.name") {
-		t.Fatal("validation failure が期待どおり発生しませんでした (error 本文は秘密露出のため出力しません)")
+		t.Fatal("validation failure differs from expectation; error details are omitted")
 	}
 	if strings.Contains(err.Error(), keyPEM) {
-		t.Fatal("error に private key の本文が含まれています")
+		t.Fatal("error contains the private key body")
 	}
 }

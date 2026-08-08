@@ -36,15 +36,15 @@ const (
 func TestStandardLifecycle_ManagedBoundary(t *testing.T) {
 	c, err := New(integrationHost, 2*time.Minute)
 	if err != nil {
-		t.Fatalf("Docker client を作成できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to create Docker client (missing daemon is a test failure): %v", err)
 	}
 	defer c.Close()
 	if _, err := c.Ping(t.Context()); err != nil {
-		t.Fatalf("Docker daemon に接続できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to connect to the Docker daemon (missing daemon is a test failure): %v", err)
 	}
 	info, err := c.Info(t.Context())
 	if err != nil {
-		t.Fatalf("Docker Info を取得できませんでした: %v", err)
+		t.Fatalf("failed to retrieve Docker Info: %v", err)
 	}
 
 	// Prefer runsc, then cover the standard runc registration when present.
@@ -56,7 +56,7 @@ func TestStandardLifecycle_ManagedBoundary(t *testing.T) {
 		runtimes = append(runtimes, "runc")
 	}
 	if len(runtimes) == 0 {
-		t.Fatalf("Docker daemon に runsc も runc も登録されていません: %v", info.Info.Runtimes)
+		t.Fatalf("neither runsc nor runc is registered in the Docker daemon: %v", info.Info.Runtimes)
 	}
 
 	for _, runtime := range runtimes {
@@ -75,22 +75,22 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 	suffix := strconv.FormatInt(scaleSetID, 16)
 	runnerName := model.RunnerName(integrationScaleSetName, suffix)
 	if !model.ValidRunnerName(runnerName) {
-		t.Fatalf("runner name が canonical 形式になりません: %q", runnerName)
+		t.Fatalf("runner name is not canonical: %q", runnerName)
 	}
 	containerName := model.ContainerName(integrationScaleSetName, runnerID, suffix)
 	if len(containerName) > 63 {
-		t.Fatalf("container name が 63 byte を超えています: %q", containerName)
+		t.Fatalf("container name exceeds 63 bytes: %q", containerName)
 	}
 	identity := model.RunnerIdentity{ScaleSetID: scaleSetID, RunnerID: runnerID, RunnerName: runnerName}
-	t.Logf("一意な identity を生成しました: scale-set-id=%d runner-id=%d runner-name=%q", scaleSetID, runnerID, runnerName)
+	t.Logf("generated unique identity: scale-set-id=%d runner-id=%d runner-name=%q", scaleSetID, runnerID, runnerName)
 
 	// Confirm the random identity does not collide with an existing fixture.
 	items, err := c.ListManaged(t.Context(), scaleSetID)
 	if err != nil {
-		t.Fatalf("ListManaged が失敗しました: %v", err)
+		t.Fatalf("ListManaged failed: %v", err)
 	}
 	if len(items) != 0 {
-		t.Fatalf("一意な scale-set-id %d に既存 container があります (label が一意でありません): %v", scaleSetID, items)
+		t.Fatalf("existing containers use unique scale-set-id %d (labels are not unique): %v", scaleSetID, items)
 	}
 
 	// Allow local images while keeping the default reproducible.
@@ -98,11 +98,11 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 	if imageRef == "" {
 		imageRef = integrationDefaultImage
 	}
-	t.Logf("使用する image: %s", imageRef)
+	t.Logf("using image: %s", imageRef)
 	pullCtx, pullCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer pullCancel()
 	if err := c.EnsureImage(pullCtx, imageRef, config.PullPolicyIfNotPresent); err != nil {
-		t.Fatalf("image %s を用意できませんでした (GHDC_TEST_IMAGE で local にある pinned image を指定できます): %v", imageRef, err)
+		t.Fatalf("failed to prepare image %s (GHDC_TEST_IMAGE can specify a pinned image available locally): %v", imageRef, err)
 	}
 
 	// A single sentinel avoids whole-daemon snapshots and parallel contention.
@@ -119,17 +119,17 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 	input.CreatedAt = time.Now().UTC()
 	spec, err := BuildManagedSpec(input)
 	if err != nil {
-		t.Fatalf("BuildManagedSpec が失敗しました: %v", err)
+		t.Fatalf("BuildManagedSpec failed: %v", err)
 	}
 	create, err := c.CreateManaged(t.Context(), spec)
 	if err != nil {
-		t.Fatalf("CreateManaged が失敗しました: %v", err)
+		t.Fatalf("CreateManaged failed: %v", err)
 	}
 	containerID := create.ID
 	if containerID == "" {
-		t.Fatalf("CreateManaged が空の container ID を返しました")
+		t.Fatalf("CreateManaged returned an empty container ID")
 	}
-	t.Logf("container を作成しました: id=%s name=%s", containerID, containerName)
+	t.Logf("created container: id=%s name=%s", containerID, containerName)
 
 	t.Cleanup(func() {
 		cleanupManagedFixture(t, c, containerID, identity)
@@ -138,16 +138,16 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 	// Image-derived labels are allowed; the six managed labels must match.
 	inspect, err := c.ContainerInspect(t.Context(), containerID, mobyclient.ContainerInspectOptions{})
 	if err != nil {
-		t.Fatalf("作成直後の inspect が失敗しました: %v", err)
+		t.Fatalf("inspect immediately after creation failed: %v", err)
 	}
 	labels := inspect.Container.Config.Labels
 	if err := model.ValidateLabels(labels, identity); err != nil {
-		t.Fatalf("daemon 上の label が managed の contract を満たしません: %v", err)
+		t.Fatalf("labels on the daemon violate the managed contract: %v", err)
 	}
-	t.Logf("label 検証を完了しました: required=%d total=%d (image 由来の extra label は許容)",
+	t.Logf("label validation completed: required=%d total=%d (extra labels from the image are allowed)",
 		len(model.RequiredLabelKeys()), len(labels))
 	if labels[model.ScaleSetIDLabelKey] != strconv.FormatInt(scaleSetID, 10) {
-		t.Fatalf("scale-set-id label が一意値になりません: %q", labels[model.ScaleSetIDLabelKey])
+		t.Fatalf("scale-set-id label is not the unique value: %q", labels[model.ScaleSetIDLabelKey])
 	}
 
 	// Confirm security-sensitive HostConfig fields reached the daemon.
@@ -155,34 +155,34 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 
 	// The fresh guard must reject zero and mismatched identities before start.
 	if _, err := c.StartManaged(t.Context(), containerID, model.RunnerIdentity{}); err == nil {
-		t.Fatalf("zero identity の StartManaged が error を返しませんでした")
+		t.Fatalf("StartManaged with a zero identity did not return an error")
 	}
 	_, err = c.StartManaged(t.Context(), containerID, model.RunnerIdentity{
 		ScaleSetID: scaleSetID, RunnerID: runnerID + 1, RunnerName: runnerName,
 	})
 	var guardErr *ManagedGuardError
 	if !errors.As(err, &guardErr) {
-		t.Fatalf("identity 不一致の StartManaged が ManagedGuardError を返しません: %v", err)
+		t.Fatalf("StartManaged with a mismatched identity did not return ManagedGuardError: %v", err)
 	}
 	stateInspect, err := c.ContainerInspect(t.Context(), containerID, mobyclient.ContainerInspectOptions{})
 	if err != nil {
-		t.Fatalf("guard 拒否後の inspect が失敗しました: %v", err)
+		t.Fatalf("inspect after guard rejection failed: %v", err)
 	}
 	if got := string(stateInspect.Container.State.Status); got != string(container.StateCreated) {
-		t.Fatalf("guard 拒否後に container が start されています: %q", got)
+		t.Fatalf("container was started after guard rejection: %q", got)
 	}
 
 	if _, err := c.StartManaged(t.Context(), containerID, identity); err != nil {
-		t.Fatalf("StartManaged が失敗しました: %v", err)
+		t.Fatalf("StartManaged failed: %v", err)
 	}
 
 	waitCtx, waitCancel := context.WithTimeout(t.Context(), 10*time.Second)
 	waitResult, err := c.WaitContainer(waitCtx, containerID, mobyclient.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	waitCancel()
 	if err != nil {
-		t.Logf("WaitContainer が timeout/error しました (長時間実行 runner は valid なため、running のまま cleanup の stop 経路で検証します): %v", err)
+		t.Logf("WaitContainer timed out or returned an error (the long-running runner is valid; verifying the stop path during cleanup): %v", err)
 	} else {
-		t.Logf("container は exit しました: code=%d", waitResult.StatusCode)
+		t.Logf("container exited: code=%d", waitResult.StatusCode)
 	}
 
 	// Image output is runtime-dependent; only the bounds are contractual.
@@ -192,56 +192,56 @@ func testStandardLifecycle(t *testing.T, c *Client, runtime string) {
 		Tail:           "200",
 	})
 	if err != nil {
-		t.Fatalf("FetchLogs が失敗しました: %v", err)
+		t.Fatalf("FetchLogs failed: %v", err)
 	}
 	if len(logs.Stdout) > 64*1024 || len(logs.Stderr) > 64*1024 {
-		t.Fatalf("log が上限を超えています: stdout=%d stderr=%d", len(logs.Stdout), len(logs.Stderr))
+		t.Fatalf("logs exceed the limit: stdout=%d stderr=%d", len(logs.Stdout), len(logs.Stderr))
 	}
-	t.Logf("log を取得しました: stdout=%d bytes stderr=%d bytes", len(logs.Stdout), len(logs.Stderr))
+	t.Logf("fetched logs: stdout=%d bytes stderr=%d bytes", len(logs.Stdout), len(logs.Stderr))
 
 	// The managed list must contain only this fixture.
 	items, err = c.ListManaged(t.Context(), scaleSetID)
 	if err != nil {
-		t.Fatalf("ListManaged が失敗しました: %v", err)
+		t.Fatalf("ListManaged failed: %v", err)
 	}
 	if len(items) != 1 || items[0].ID() != containerID {
-		t.Fatalf("ListManaged が期待と一致しません: %+v", items)
+		t.Fatalf("ListManaged result differs from expectation: %+v", items)
 	}
 	if !model.LabelsMatchIdentity(items[0].Labels(), identity) {
-		t.Fatalf("列挙された container の label が identity と一致しません")
+		t.Fatalf("labels of the listed container do not match the identity")
 	}
 
 	verified, err := c.VerifyManaged(t.Context(), containerID, identity)
 	if err != nil {
-		t.Fatalf("VerifyManaged が失敗しました: %v", err)
+		t.Fatalf("VerifyManaged failed: %v", err)
 	}
 	if verified.ID() != containerID {
-		t.Fatalf("VerifyManaged が別の container を返しました: %q", verified.ID())
+		t.Fatalf("VerifyManaged returned a different container: %q", verified.ID())
 	}
 
 	cleanupResult, err := c.CleanupManaged(t.Context(), verified, ManagedCleanupOptions{
 		StopTimeout: time.Duration(cfg.Runner.StopTimeout),
 	})
 	if err != nil {
-		t.Fatalf("CleanupManaged が失敗しました: %v", err)
+		t.Fatalf("CleanupManaged failed: %v", err)
 	}
 	if cleanupResult.ContainerID != containerID {
-		t.Fatalf("CleanupManaged が別の container を返しました: %q", cleanupResult.ContainerID)
+		t.Fatalf("CleanupManaged returned a different container: %q", cleanupResult.ContainerID)
 	}
 	if !cleanupResult.HasExitCode {
-		t.Fatalf("CleanupManaged が終了 code を観測できませんでした: %+v", cleanupResult)
+		t.Fatalf("CleanupManaged did not observe an exit code: %+v", cleanupResult)
 	}
 	if len(cleanupResult.Stdout) > 64*1024 || len(cleanupResult.Stderr) > 64*1024 {
-		t.Fatalf("cleanup 時の log が上限を超えています: stdout=%d stderr=%d", len(cleanupResult.Stdout), len(cleanupResult.Stderr))
+		t.Fatalf("cleanup logs exceed the limit: stdout=%d stderr=%d", len(cleanupResult.Stdout), len(cleanupResult.Stderr))
 	}
-	t.Logf("CleanupManaged が完了しました: exit-code=%d stdout=%d bytes stderr=%d bytes",
+	t.Logf("CleanupManaged completed: exit-code=%d stdout=%d bytes stderr=%d bytes",
 		cleanupResult.ExitCode, len(cleanupResult.Stdout), len(cleanupResult.Stderr))
 
 	items, err = c.ListManaged(t.Context(), scaleSetID)
 	if err != nil {
-		t.Fatalf("ListManaged が失敗しました: %v", err)
+		t.Fatalf("ListManaged failed: %v", err)
 	}
 	if len(items) != 0 {
-		t.Fatalf("cleanup 後に managed container が残っています: %+v", items)
+		t.Fatalf("managed containers remain after cleanup: %+v", items)
 	}
 }

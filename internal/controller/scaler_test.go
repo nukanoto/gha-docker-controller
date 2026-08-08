@@ -64,21 +64,21 @@ func TestDesiredRunnerCount(t *testing.T) {
 		jobs int
 		want int
 	}{
-		{name: "job 数が min 未満なら min", min: 2, max: 10, jobs: 0, want: 2},
-		{name: "job 数が min と等しいなら min", min: 2, max: 10, jobs: 2, want: 2},
-		{name: "job 数が min と max の間なら job 数", min: 2, max: 10, jobs: 5, want: 5},
-		{name: "job 数が max と等しいなら max", min: 2, max: 10, jobs: 10, want: 10},
-		{name: "job 数が max を超えたら max", min: 2, max: 10, jobs: 15, want: 10},
-		{name: "負の job 数は min 側へ clamp", min: 2, max: 10, jobs: -3, want: 2},
-		{name: "min と job 数が負なら 0", min: -2, max: 10, jobs: -1, want: 0},
-		{name: "min が 0 で負の job 数なら 0", min: 0, max: 10, jobs: -1, want: 0},
-		{name: "min が max を超える場合は max", min: 10, max: 5, jobs: 0, want: 5},
-		{name: "max が 0 なら 0", min: 0, max: 0, jobs: 5, want: 0},
+		{name: "jobs below min use min", min: 2, max: 10, jobs: 0, want: 2},
+		{name: "jobs equal to min use min", min: 2, max: 10, jobs: 2, want: 2},
+		{name: "jobs between min and max use jobs", min: 2, max: 10, jobs: 5, want: 5},
+		{name: "jobs equal to max use max", min: 2, max: 10, jobs: 10, want: 10},
+		{name: "jobs above max use max", min: 2, max: 10, jobs: 15, want: 10},
+		{name: "negative jobs clamp to min", min: 2, max: 10, jobs: -3, want: 2},
+		{name: "negative min and jobs clamp to zero", min: -2, max: 10, jobs: -1, want: 0},
+		{name: "zero min and negative jobs clamp to zero", min: 0, max: 10, jobs: -1, want: 0},
+		{name: "min above max uses max", min: 10, max: 5, jobs: 0, want: 5},
+		{name: "zero max produces zero", min: 0, max: 0, jobs: 5, want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := desiredRunnerCount(tt.min, tt.max, tt.jobs); got != tt.want {
-				t.Fatalf("desiredRunnerCount の結果が不正です: min=%d max=%d jobs=%d、実測値=%d、期待値=%d", tt.min, tt.max, tt.jobs, got, tt.want)
+				t.Fatalf("desiredRunnerCount is invalid: min=%d max=%d jobs=%d got=%d want=%d", tt.min, tt.max, tt.jobs, got, tt.want)
 			}
 		})
 	}
@@ -93,17 +93,17 @@ func TestRunnerStateCount(t *testing.T) {
 		protected []string
 		want      int
 	}{
-		{name: "空状態は 0", want: 0},
-		{name: "idle だけを数える", idle: []string{"a", "b"}, want: 2},
-		{name: "busy だけを数える", busy: []string{"a"}, want: 1},
-		{name: "protected だけを数える", protected: []string{"a", "b", "c"}, want: 3},
-		{name: "3 状態の合計を数える", idle: []string{"a"}, busy: []string{"b"}, protected: []string{"c"}, want: 3},
+		{name: "empty state has zero runners", want: 0},
+		{name: "counts idle runners", idle: []string{"a", "b"}, want: 2},
+		{name: "counts busy runners", busy: []string{"a"}, want: 1},
+		{name: "counts protected runners", protected: []string{"a", "b", "c"}, want: 3},
+		{name: "counts all three states", idle: []string{"a"}, busy: []string{"b"}, protected: []string{"c"}, want: 3},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := stateWith(tt.idle, tt.busy, tt.protected)
 			if got := st.count(); got != tt.want {
-				t.Fatalf("count の結果が不正です: 実測値=%d、期待値=%d", got, tt.want)
+				t.Fatalf("count is invalid: got=%d want=%d", got, tt.want)
 			}
 		})
 	}
@@ -120,21 +120,21 @@ func TestRunnerStateMarkBusy(t *testing.T) {
 		wantIdle []string
 		wantBusy []string
 	}{
-		{name: "先頭の idle が busy へ移る", idle: []string{"a", "b"}, target: "a", wantOK: true, wantIdle: []string{"b"}, wantBusy: []string{"a"}},
-		{name: "末尾の idle が busy へ移る", idle: []string{"a", "b"}, target: "b", wantOK: true, wantIdle: []string{"a"}, wantBusy: []string{"b"}},
-		{name: "idle が空なら false", idle: nil, target: "a", wantOK: false, wantIdle: nil, wantBusy: nil},
-		{name: "unknown は無変更で false", idle: []string{"a"}, target: "x", wantOK: false, wantIdle: []string{"a"}, wantBusy: nil},
-		{name: "busy 済みの name は無変更で false", idle: []string{"a"}, busy: []string{"b"}, target: "b", wantOK: false, wantIdle: []string{"a"}, wantBusy: []string{"b"}},
+		{name: "first idle runner becomes busy", idle: []string{"a", "b"}, target: "a", wantOK: true, wantIdle: []string{"b"}, wantBusy: []string{"a"}},
+		{name: "last idle runner becomes busy", idle: []string{"a", "b"}, target: "b", wantOK: true, wantIdle: []string{"a"}, wantBusy: []string{"b"}},
+		{name: "empty idle state returns false", idle: nil, target: "a", wantOK: false, wantIdle: nil, wantBusy: nil},
+		{name: "unknown runner returns false without changes", idle: []string{"a"}, target: "x", wantOK: false, wantIdle: []string{"a"}, wantBusy: nil},
+		{name: "already busy runner returns false without changes", idle: []string{"a"}, busy: []string{"b"}, target: "b", wantOK: false, wantIdle: []string{"a"}, wantBusy: []string{"b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := stateWith(tt.idle, tt.busy, nil)
 			if got := st.markBusy(tt.target); got != tt.wantOK {
-				t.Fatalf("markBusy の結果が不正です: target=%q、実測値=%v、期待値=%v", tt.target, got, tt.wantOK)
+				t.Fatalf("markBusy is invalid: target=%q got=%v want=%v", tt.target, got, tt.wantOK)
 			}
 			idle, busy, _ := stateNames(st)
 			if !reflect.DeepEqual(idle, tt.wantIdle) || !reflect.DeepEqual(busy, tt.wantBusy) {
-				t.Fatalf("markBusy(%q) 後の state が不一致: idle=%v busy=%v, want idle=%v busy=%v",
+				t.Fatalf("state after markBusy(%q) differs: idle=%v busy=%v want idle=%v busy=%v",
 					tt.target, idle, busy, tt.wantIdle, tt.wantBusy)
 			}
 		})
@@ -152,25 +152,25 @@ func TestRunnerStateTakeOwnership(t *testing.T) {
 		wantIdle []string
 		wantBusy []string
 	}{
-		{name: "busy の runner を除去する", idle: []string{"a"}, busy: []string{"b"}, target: "b", wantOK: true, wantIdle: []string{"a"}, wantBusy: nil},
-		{name: "idle の runner を除去する", idle: []string{"a", "b"}, target: "a", wantOK: true, wantIdle: []string{"b"}, wantBusy: nil},
-		{name: "同名は busy 優先で除去する", idle: []string{"a"}, busy: []string{"a"}, target: "a", wantOK: true, wantIdle: []string{"a"}, wantBusy: nil},
-		{name: "unknown は無変更で false", idle: []string{"a"}, busy: []string{"b"}, target: "x", wantOK: false, wantIdle: []string{"a"}, wantBusy: []string{"b"}},
-		{name: "空状態は false", target: "a", wantOK: false, wantIdle: nil, wantBusy: nil},
+		{name: "removes a busy runner", idle: []string{"a"}, busy: []string{"b"}, target: "b", wantOK: true, wantIdle: []string{"a"}, wantBusy: nil},
+		{name: "removes an idle runner", idle: []string{"a", "b"}, target: "a", wantOK: true, wantIdle: []string{"b"}, wantBusy: nil},
+		{name: "busy state takes priority for duplicate names", idle: []string{"a"}, busy: []string{"a"}, target: "a", wantOK: true, wantIdle: []string{"a"}, wantBusy: nil},
+		{name: "unknown runner returns false without changes", idle: []string{"a"}, busy: []string{"b"}, target: "x", wantOK: false, wantIdle: []string{"a"}, wantBusy: []string{"b"}},
+		{name: "empty state returns false", target: "a", wantOK: false, wantIdle: nil, wantBusy: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := stateWith(tt.idle, tt.busy, nil)
 			got, ok := st.takeOwnership(tt.target)
 			if ok != tt.wantOK {
-				t.Fatalf("takeOwnership の結果が不正です: target=%q、実測値=%v、期待値=%v", tt.target, ok, tt.wantOK)
+				t.Fatalf("takeOwnership is invalid: target=%q got=%v want=%v", tt.target, ok, tt.wantOK)
 			}
 			if tt.wantOK && got.runnerName != tt.target {
-				t.Fatalf("takeOwnership(%q) が返した ref の name = %q, want %q", tt.target, got.runnerName, tt.target)
+				t.Fatalf("takeOwnership(%q) returned runner name %q, want %q", tt.target, got.runnerName, tt.target)
 			}
 			idle, busy, _ := stateNames(st)
 			if !reflect.DeepEqual(idle, tt.wantIdle) || !reflect.DeepEqual(busy, tt.wantBusy) {
-				t.Fatalf("takeOwnership(%q) 後の state が不一致: idle=%v busy=%v, want idle=%v busy=%v",
+				t.Fatalf("state after takeOwnership(%q) differs: idle=%v busy=%v want idle=%v busy=%v",
 					tt.target, idle, busy, tt.wantIdle, tt.wantBusy)
 			}
 		})
@@ -188,13 +188,13 @@ func TestRunnerStateScaleDownIdle(t *testing.T) {
 		wantGone  []string
 		wantIdle  []string
 	}{
-		{name: "古い順に limit 個だけ除去する", idle: []string{"oldest", "middle", "newest"}, limit: 2, wantGone: []string{"oldest", "middle"}, wantIdle: []string{"newest"}},
-		{name: "limit が idle 数を超えたら全部除去する", idle: []string{"a", "b"}, limit: 5, wantGone: []string{"a", "b"}, wantIdle: nil},
-		{name: "limit と idle 数が等しいら全部除去する", idle: []string{"a", "b"}, limit: 2, wantGone: []string{"a", "b"}, wantIdle: nil},
-		{name: "limit 0 は何もしない", idle: []string{"a"}, limit: 0, wantGone: nil, wantIdle: []string{"a"}},
-		{name: "負の limit は何もしない", idle: []string{"a"}, limit: -1, wantGone: nil, wantIdle: []string{"a"}},
-		{name: "idle が空なら空を返す", limit: 3, wantGone: nil, wantIdle: nil},
-		{name: "busy と protected は除去しない", idle: []string{"a"}, busy: []string{"b"}, protected: []string{"p"}, limit: 5, wantGone: []string{"a"}, wantIdle: nil},
+		{name: "removes only the oldest limit runners", idle: []string{"oldest", "middle", "newest"}, limit: 2, wantGone: []string{"oldest", "middle"}, wantIdle: []string{"newest"}},
+		{name: "removes all idle runners when limit exceeds the count", idle: []string{"a", "b"}, limit: 5, wantGone: []string{"a", "b"}, wantIdle: nil},
+		{name: "removes all idle runners when limit equals the count", idle: []string{"a", "b"}, limit: 2, wantGone: []string{"a", "b"}, wantIdle: nil},
+		{name: "zero limit makes no changes", idle: []string{"a"}, limit: 0, wantGone: nil, wantIdle: []string{"a"}},
+		{name: "negative limit makes no changes", idle: []string{"a"}, limit: -1, wantGone: nil, wantIdle: []string{"a"}},
+		{name: "empty idle state returns no runners", limit: 3, wantGone: nil, wantIdle: nil},
+		{name: "busy and protected runners are not removed", idle: []string{"a"}, busy: []string{"b"}, protected: []string{"p"}, limit: 5, wantGone: []string{"a"}, wantIdle: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -208,18 +208,18 @@ func TestRunnerStateScaleDownIdle(t *testing.T) {
 				gotNames = nil
 			}
 			if !reflect.DeepEqual(gotNames, tt.wantGone) {
-				t.Fatalf("scaleDownIdle(%d) が除去した idle = %v, want %v", tt.limit, gotNames, tt.wantGone)
+				t.Fatalf("scaleDownIdle(%d) removed idle=%v want=%v", tt.limit, gotNames, tt.wantGone)
 			}
 			idle, busy, protected := stateNames(st)
 			if !reflect.DeepEqual(idle, tt.wantIdle) {
-				t.Fatalf("scaleDownIdle(%d) 後の idle = %v, want %v", tt.limit, idle, tt.wantIdle)
+				t.Fatalf("idle state after scaleDownIdle(%d)=%v want=%v", tt.limit, idle, tt.wantIdle)
 			}
 			wantBusy := append([]string(nil), tt.busy...)
 			sort.Strings(wantBusy)
 			wantProtected := append([]string(nil), tt.protected...)
 			sort.Strings(wantProtected)
 			if !reflect.DeepEqual(busy, wantBusy) || !reflect.DeepEqual(protected, wantProtected) {
-				t.Fatalf("scaleDownIdle(%d) が busy/protected を変更した: busy=%v protected=%v, want busy=%v protected=%v",
+				t.Fatalf("scaleDownIdle(%d) changed busy/protected: busy=%v protected=%v want busy=%v protected=%v",
 					tt.limit, busy, protected, wantBusy, wantProtected)
 			}
 		})
@@ -235,23 +235,23 @@ func TestRunnerStateProtected(t *testing.T) {
 		wantTaken  bool
 		wantRemain []string
 	}{
-		{name: "known は container ID で除去される", protected: []string{"a", "b"}, target: "a", wantTaken: true, wantRemain: []string{"b"}},
-		{name: "unknown は無変更で false", protected: []string{"a"}, target: "x", wantTaken: false, wantRemain: []string{"a"}},
-		{name: "空状態は false", target: "a", wantTaken: false, wantRemain: nil},
+		{name: "known runner is removed by container ID", protected: []string{"a", "b"}, target: "a", wantTaken: true, wantRemain: []string{"b"}},
+		{name: "unknown runner returns false without changes", protected: []string{"a"}, target: "x", wantTaken: false, wantRemain: []string{"a"}},
+		{name: "empty state returns false", target: "a", wantTaken: false, wantRemain: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := stateWith(nil, nil, tt.protected)
 			got, ok := st.takeProtected("c" + tt.target)
 			if ok != tt.wantTaken {
-				t.Fatalf("takeProtected の結果が不正です: target=%q、実測値=%v、期待値=%v", tt.target, ok, tt.wantTaken)
+				t.Fatalf("takeProtected is invalid: target=%q got=%v want=%v", tt.target, ok, tt.wantTaken)
 			}
 			if tt.wantTaken && got.containerID != "c"+tt.target {
-				t.Fatalf("takeProtected(%q) が返した container ID = %q, want %q", tt.target, got.containerID, "c"+tt.target)
+				t.Fatalf("takeProtected(%q) returned container ID %q, want %q", tt.target, got.containerID, "c"+tt.target)
 			}
 			_, _, protected := stateNames(st)
 			if !reflect.DeepEqual(protected, tt.wantRemain) {
-				t.Fatalf("takeProtected(%q) 後の protected = %v, want %v", tt.target, protected, tt.wantRemain)
+				t.Fatalf("protected state after takeProtected(%q)=%v want=%v", tt.target, protected, tt.wantRemain)
 			}
 		})
 	}
@@ -263,14 +263,14 @@ func TestRunnerStateTakeAll(t *testing.T) {
 	allIdle := st.takeAllIdle()
 	allBusy := st.takeAllBusy()
 	if len(allIdle) != 2 || len(allBusy) != 1 {
-		t.Fatalf("takeAllIdle() が %d 個、takeAllBusy() が %d 個, want 2 個と 1 個", len(allIdle), len(allBusy))
+		t.Fatalf("takeAllIdle() returned %d and takeAllBusy() returned %d; want 2 and 1", len(allIdle), len(allBusy))
 	}
 	if st.count() != 1 {
-		t.Fatalf("全量除去後の count() = %d, want 1 (protected のみ)", st.count())
+		t.Fatalf("count() after removing idle and busy runners=%d, want 1 protected runner", st.count())
 	}
 	_, _, protected := stateNames(st)
 	if !reflect.DeepEqual(protected, []string{"p"}) {
-		t.Fatalf("全量除去後の protected = %v, want [p]", protected)
+		t.Fatalf("protected runners after removal=%v, want [p]", protected)
 	}
 }
 
@@ -278,13 +278,13 @@ func TestRunnerStateTakeAll(t *testing.T) {
 func TestScaler_NilEventReturnsFixedError(t *testing.T) {
 	s := &DockerScaler{state: newRunnerState()}
 	if err := s.HandleJobStarted(context.Background(), nil); err == nil || err.Error() != "controller: nil job started event" {
-		t.Fatalf("nil JobStarted の error が期待と異なります: %v", err)
+		t.Fatalf("nil JobStarted error differs from expectation: %v", err)
 	}
 	if err := s.HandleJobCompleted(context.Background(), nil); err == nil || err.Error() != "controller: nil job completed event" {
-		t.Fatalf("nil JobCompleted の error が期待と異なります: %v", err)
+		t.Fatalf("nil JobCompleted error differs from expectation: %v", err)
 	}
 	if got := s.state.count(); got != 0 {
-		t.Fatalf("nil event が state を変更しました: count=%d", got)
+		t.Fatalf("nil event changed state: count=%d", got)
 	}
 }
 
@@ -295,27 +295,27 @@ func TestRunnerRefFromLabels(t *testing.T) {
 		labels map[string]string
 		wantOK bool
 	}{
-		{name: "正の整数は復元できる", labels: map[string]string{model.RunnerIDLabelKey: "42", model.RunnerNameLabelKey: "runner-42"}, wantOK: true},
-		{name: "非整数は malformed", labels: map[string]string{model.RunnerIDLabelKey: "abc"}, wantOK: false},
-		{name: "空文字列は malformed", labels: map[string]string{model.RunnerIDLabelKey: ""}, wantOK: false},
-		{name: "0 は malformed", labels: map[string]string{model.RunnerIDLabelKey: "0"}, wantOK: false},
-		{name: "負数は malformed", labels: map[string]string{model.RunnerIDLabelKey: "-1"}, wantOK: false},
-		{name: "label 不在は malformed", labels: map[string]string{}, wantOK: false},
+		{name: "positive integer is restored", labels: map[string]string{model.RunnerIDLabelKey: "42", model.RunnerNameLabelKey: "runner-42"}, wantOK: true},
+		{name: "non-integer is malformed", labels: map[string]string{model.RunnerIDLabelKey: "abc"}, wantOK: false},
+		{name: "empty value is malformed", labels: map[string]string{model.RunnerIDLabelKey: ""}, wantOK: false},
+		{name: "zero is malformed", labels: map[string]string{model.RunnerIDLabelKey: "0"}, wantOK: false},
+		{name: "negative value is malformed", labels: map[string]string{model.RunnerIDLabelKey: "-1"}, wantOK: false},
+		{name: "missing label is malformed", labels: map[string]string{}, wantOK: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ref, err := runnerRefFromLabels("c1", tt.labels)
 			if tt.wantOK {
 				if err != nil {
-					t.Fatalf("runnerRefFromLabels が error を返しました: %v", err)
+					t.Fatalf("runnerRefFromLabels returned an error: %v", err)
 				}
 				if ref.containerID != "c1" || ref.runnerID != 42 || ref.runnerName != "runner-42" {
-					t.Fatalf("復元した runnerRef が期待と異なります: %+v", ref)
+					t.Fatalf("restored runnerRef differs from expectation: %+v", ref)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatalf("malformed label なのに error を返しませんでした: %+v", ref)
+				t.Fatalf("malformed label did not return an error: %+v", ref)
 			}
 		})
 	}
@@ -325,7 +325,7 @@ func TestRunnerRefFromLabels(t *testing.T) {
 func TestScaler_WatchStartShutdownRace(t *testing.T) {
 	dc, err := docker.New("unix:///tmp/ghadc-unit-test-nonexistent.sock", time.Second)
 	if err != nil {
-		t.Fatalf("docker.New が失敗しました: %v", err)
+		t.Fatalf("docker.New failed: %v", err)
 	}
 	defer dc.Close()
 	watchCtx, watchCancel := context.WithCancel(context.Background())
@@ -351,20 +351,20 @@ func TestScaler_WatchStartShutdownRace(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		if err := s.Shutdown(context.Background()); err != nil {
-			t.Errorf("Shutdown が watch join に失敗しました: %v", err)
+			t.Errorf("Shutdown failed to join watches: %v", err)
 		}
 	}()
 	wg.Wait()
 
 	s.startWatch(ref("after-shutdown"), false)
 	if !s.watchStopped {
-		t.Fatalf("Shutdown 後に watchStopped が false のままです")
+		t.Fatalf("watchStopped is false after Shutdown")
 	}
 	if got := s.state.count(); got != 0 {
-		t.Fatalf("startWatch が state を変更しました: count=%d", got)
+		t.Fatalf("startWatch changed state after Shutdown: count=%d", got)
 	}
 	if err := s.Shutdown(context.Background()); err != nil {
-		t.Fatalf("2 回目の Shutdown が失敗しました: %v", err)
+		t.Fatalf("second Shutdown failed: %v", err)
 	}
 }
 
@@ -391,13 +391,13 @@ func TestScaler_ShutdownTimesOutWithoutCleanup(t *testing.T) {
 	defer cancel()
 	err := s.Shutdown(ctx)
 	if !errors.Is(err, ErrShutdownJoinTimeout) {
-		t.Fatalf("watch 未完了なのに Shutdown が ErrShutdownJoinTimeout を返しませんでした: %v", err)
+		t.Fatalf("Shutdown did not return ErrShutdownJoinTimeout while a watch was active: %v", err)
 	}
 	if got := s.state.count(); got != 1 {
-		t.Fatalf("timeout 時に state が変更されました: count=%d (want 1)", got)
+		t.Fatalf("state changed on timeout: count=%d (want 1)", got)
 	}
 	if !s.watchStopped {
-		t.Fatalf("timeout 後も watchStopped が false のままです")
+		t.Fatalf("watchStopped is false after timeout")
 	}
 
 	close(release)
@@ -409,7 +409,7 @@ func TestScaler_ShutdownTimesOutWithoutCleanup(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatalf("gate 解放後も watch goroutine が終了しませんでした")
+		t.Fatalf("watch goroutine did not finish after releasing the gate")
 	}
 }
 
@@ -425,7 +425,7 @@ func TestScaler_ShutdownReturnsTrueWhenWatchDrains(t *testing.T) {
 		state:          newRunnerState(),
 	}
 	if err := s.Shutdown(context.Background()); err != nil {
-		t.Fatalf("watch が空なのに Shutdown が error を返しました: %v", err)
+		t.Fatalf("Shutdown returned an error with no watches: %v", err)
 	}
 }
 
@@ -433,7 +433,7 @@ func TestScaler_ShutdownReturnsTrueWhenWatchDrains(t *testing.T) {
 func TestScaler_ShutdownReturnsCleanupErrors(t *testing.T) {
 	dc, err := docker.New("unix:///tmp/ghadc-unit-test-nonexistent.sock", time.Second)
 	if err != nil {
-		t.Fatalf("docker.New が失敗しました: %v", err)
+		t.Fatalf("docker.New failed: %v", err)
 	}
 	defer dc.Close()
 	watchCtx, watchCancel := context.WithCancel(context.Background())
@@ -454,17 +454,17 @@ func TestScaler_ShutdownReturnsCleanupErrors(t *testing.T) {
 
 	err = s.Shutdown(context.Background())
 	if err == nil {
-		t.Fatalf("cleanup 失敗なのに Shutdown が nil を返しました")
+		t.Fatalf("Shutdown returned nil despite cleanup failures")
 	}
 	if errors.Is(err, ErrShutdownJoinTimeout) {
-		t.Fatalf("cleanup 失敗が join timeout と誤分類されました: %v", err)
+		t.Fatalf("cleanup failure was misclassified as a join timeout: %v", err)
 	}
 	if got := strings.Count(err.Error(), "shutdown cleanup container"); got != 3 {
-		t.Fatalf("Join された cleanup error の数が期待と異なります: %d (%v)", got, err)
+		t.Fatalf("unexpected number of joined cleanup errors: %d (%v)", got, err)
 	}
 	select {
 	case waitErr := <-s.ErrCh():
-		t.Fatalf("Shutdown が errCh へ error を通知しました: %v", waitErr)
+		t.Fatalf("Shutdown reported an error on errCh: %v", waitErr)
 	default:
 	}
 }
@@ -475,14 +475,14 @@ func TestScaler_CleanupContextIsFresh(t *testing.T) {
 	cctx, ccancel := s.cleanupContext()
 	defer ccancel()
 	if err := cctx.Err(); err != nil {
-		t.Fatalf("fresh context が cancel 済みです: %v", err)
+		t.Fatalf("fresh context is already canceled: %v", err)
 	}
 	deadline, ok := cctx.Deadline()
 	if !ok {
-		t.Fatalf("cleanup context に deadline がありません")
+		t.Fatalf("cleanup context has no deadline")
 	}
 	if d := time.Until(deadline); d < 100*time.Millisecond || d > 200*time.Millisecond {
-		t.Fatalf("cleanup context の deadline が期待と異なります: %v", d)
+		t.Fatalf("cleanup context deadline differs from expectation: %v", d)
 	}
 }
 
@@ -495,15 +495,15 @@ func TestScaler_ReleaseWatchOwnership(t *testing.T) {
 	s.state.addProtected(protected)
 
 	if !s.releaseWatchOwnership(idle, false) {
-		t.Fatalf("idle runner の所有権を解放できませんでした")
+		t.Fatalf("failed to release idle runner ownership")
 	}
 	if !s.releaseWatchOwnership(protected, true) {
-		t.Fatalf("protected runner の所有権を解放できませんでした")
+		t.Fatalf("failed to release protected runner ownership")
 	}
 	if got := s.state.count(); got != 0 {
-		t.Fatalf("解放後も runner が capacity に残っています: %d", got)
+		t.Fatalf("runner remains in capacity after release: %d", got)
 	}
 	if s.releaseWatchOwnership(idle, false) || s.releaseWatchOwnership(protected, true) {
-		t.Fatalf("同じ runner の所有権を二重に解放できました")
+		t.Fatalf("the same runner ownership was released twice")
 	}
 }

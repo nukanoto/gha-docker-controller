@@ -23,10 +23,10 @@ func TestJitConfig_StringRedactsSecret(t *testing.T) {
 	for _, verb := range []string{"%s", "%v"} {
 		out := fmt.Sprintf(verb, jit)
 		if strings.Contains(out, secret) {
-			t.Fatalf("%s 出力に encoded の実 secret 値が露出しています: %s", verb, out)
+			t.Fatalf("%s output exposes the encoded secret value: %s", verb, out)
 		}
 		if !strings.Contains(out, "<redacted>") {
-			t.Fatalf("%s 出力に redact marker がありません: %s", verb, out)
+			t.Fatalf("%s output has no redaction marker: %s", verb, out)
 		}
 	}
 }
@@ -37,11 +37,11 @@ func TestValidateJitInput(t *testing.T) {
 		name := validJitRunnerName(t)
 		for _, id := range []int{0, -1, -100} {
 			if err := validateJitInput(name, id); err == nil {
-				t.Fatalf("scale set ID %d が error になりません", id)
+				t.Fatalf("scale set ID %d did not return an error", id)
 			}
 		}
 		if err := validateJitInput(name, 42); err != nil {
-			t.Fatalf("正の scale set ID を拒否しました")
+			t.Fatalf("rejected positive scale set ID")
 		}
 	})
 	t.Run("runner name", func(t *testing.T) {
@@ -50,24 +50,24 @@ func TestValidateJitInput(t *testing.T) {
 			input string
 			want  bool
 		}{
-			{name: "空文字", want: false},
-			{name: "suffix なし", input: "scale-set", want: false},
-			{name: "suffix が 11 桁", input: "scale-set-0123456789a", want: false},
-			{name: "suffix が 13 桁", input: "scale-set-0123456789abc", want: false},
-			{name: "suffix が大文字 hex", input: "scale-set-0123456789AB", want: false},
-			{name: "suffix が hex 以外", input: "scale-set-0123456789zz", want: false},
-			{name: "prefix が非 canonical (大文字)", input: "Scale-Set-0123456789ab", want: false},
-			{name: "prefix が非 canonical (先頭区切り)", input: "-scale-set-0123456789ab", want: false},
-			{name: "canonical な runner name", input: validJitRunnerName(t), want: true},
+			{name: "empty string", want: false},
+			{name: "no suffix", input: "scale-set", want: false},
+			{name: "11-digit suffix", input: "scale-set-0123456789a", want: false},
+			{name: "13-digit suffix", input: "scale-set-0123456789abc", want: false},
+			{name: "uppercase hex suffix", input: "scale-set-0123456789AB", want: false},
+			{name: "non-hex suffix", input: "scale-set-0123456789zz", want: false},
+			{name: "non-canonical uppercase prefix", input: "Scale-Set-0123456789ab", want: false},
+			{name: "non-canonical leading separator", input: "-scale-set-0123456789ab", want: false},
+			{name: "canonical runner name", input: validJitRunnerName(t), want: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				err := validateJitInput(tt.input, 42)
 				if tt.want && err != nil {
-					t.Fatalf("canonical な runner name を拒否しました")
+					t.Fatalf("rejected canonical runner name")
 				}
 				if !tt.want && err == nil {
-					t.Fatalf("不正な runner name %q が error になりません", tt.input)
+					t.Fatalf("invalid runner name %q did not return an error", tt.input)
 				}
 			})
 		}
@@ -90,33 +90,33 @@ func TestValidateJitConfig(t *testing.T) {
 		raw  *scalesetapi.RunnerScaleSetJitRunnerConfig
 		ok   bool
 	}{
-		{name: "nil 応答"},
+		{name: "nil response"},
 		{name: "nil Runner", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{}},
-		{name: "非正の runner ID", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
+		{name: "non-positive runner ID", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
 			Runner:           &scalesetapi.RunnerReference{ID: 0, Name: name, RunnerScaleSetID: 42},
 			EncodedJITConfig: "opaque-secret-value",
 		}},
-		{name: "runner name の不一致", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
+		{name: "runner name mismatch", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
 			Runner:           &scalesetapi.RunnerReference{ID: 11, Name: "other-name", RunnerScaleSetID: 42},
 			EncodedJITConfig: "opaque-secret-value",
 		}},
-		{name: "scale set ID の不一致", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
+		{name: "scale set ID mismatch", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
 			Runner:           &scalesetapi.RunnerReference{ID: 11, Name: name, RunnerScaleSetID: 1},
 			EncodedJITConfig: "opaque-secret-value",
 		}},
-		{name: "空の encoded JIT config", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
+		{name: "empty encoded JIT config", raw: &scalesetapi.RunnerScaleSetJitRunnerConfig{
 			Runner: &scalesetapi.RunnerReference{ID: 11, Name: name, RunnerScaleSetID: 42},
 		}},
-		{name: "一致する応答", raw: valid, ok: true},
+		{name: "matching response", raw: valid, ok: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateJitConfig(tt.raw, name, 42)
 			if tt.ok && err != nil {
-				t.Fatalf("一致する応答を拒否しました")
+				t.Fatalf("rejected matching response")
 			}
 			if !tt.ok && err == nil {
-				t.Fatalf("不正な応答が error になりません")
+				t.Fatalf("invalid response did not return an error")
 			}
 		})
 	}

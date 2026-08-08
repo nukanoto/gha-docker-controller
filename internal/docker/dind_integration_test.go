@@ -45,7 +45,7 @@ func buildDindImage(t *testing.T, c *Client, contextDir, tag string) {
 	t.Helper()
 	buildContext, err := tarDindContext(contextDir)
 	if err != nil {
-		t.Fatalf("dind image context を tar にできませんでした: %v", err)
+		t.Fatalf("failed to archive DinD image context: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
 	defer cancel()
@@ -57,7 +57,7 @@ func buildDindImage(t *testing.T, c *Client, contextDir, tag string) {
 		ForceRemove: true,
 	})
 	if err != nil {
-		t.Fatalf("ImageBuild が失敗しました: %v", err)
+		t.Fatalf("ImageBuild failed: %v", err)
 	}
 	defer res.Body.Close()
 	dec := json.NewDecoder(res.Body)
@@ -69,10 +69,10 @@ func buildDindImage(t *testing.T, c *Client, contextDir, tag string) {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			t.Fatalf("build stream の読み込みに失敗しました: %v", err)
+			t.Fatalf("failed to read build stream: %v", err)
 		}
 		if msg.Error != "" {
-			t.Fatalf("image build が失敗しました: %s", msg.Error)
+			t.Fatalf("image build failed: %s", msg.Error)
 		}
 	}
 }
@@ -103,7 +103,7 @@ func prepareDindImage(t *testing.T, c *Client) (imageRef string) {
 		pullCtx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
 		defer cancel()
 		if err := c.EnsureImage(pullCtx, ref, config.PullPolicyIfNotPresent); err != nil {
-			t.Fatalf("pinned dind image %s を用意できませんでした: %v", ref, err)
+			t.Fatalf("failed to prepare pinned DinD image %s: %v", ref, err)
 		}
 		return ref
 	}
@@ -123,7 +123,7 @@ func removeTestImage(t *testing.T, c *Client, ref string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if _, err := c.c.ImageRemove(ctx, ref, mobyclient.ImageRemoveOptions{Force: false, PruneChildren: true}); err != nil && !cerrdefs.IsNotFound(err) {
-		t.Logf("test image %s の削除に失敗しました (best-effort): %v", ref, err)
+		t.Logf("failed to remove test image %s (best effort): %v", ref, err)
 	}
 }
 
@@ -137,13 +137,13 @@ func forceRemoveTestContainer(t *testing.T, c *Client, containerID string, ident
 		if cerrdefs.IsNotFound(err) {
 			return
 		}
-		t.Fatalf("cleanup 前の fresh inspect が失敗しました: %v", err)
+		t.Fatalf("fresh inspect before cleanup failed: %v", err)
 	}
 	if err := verifyManagedLabels(containerID, containerLabels(inspect.Container), identity); err != nil {
-		t.Fatalf("cleanup 前の managed label の exact 確認に失敗しました (削除しません): %v", err)
+		t.Fatalf("exact managed-label verification before cleanup failed (will not remove it): %v", err)
 	}
 	if _, err := c.c.ContainerRemove(ctx, containerID, mobyclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true}); err != nil && !cerrdefs.IsNotFound(err) {
-		t.Fatalf("test container の強制 cleanup に失敗しました: %v", err)
+		t.Fatalf("forced cleanup of test container failed: %v", err)
 	}
 }
 
@@ -160,28 +160,28 @@ func verifyDindInspectFields(t *testing.T, in container.InspectResponse, cfg *co
 		"GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT=arc-docker/" + input.UserAgentVersion,
 	} {
 		if !slices.Contains(cc.Env, want) {
-			t.Fatalf("daemon 上の JIT env が契約と一致しません: %v", cc.Env)
+			t.Fatalf("JIT environment on the daemon violates the contract: %v", cc.Env)
 		}
 	}
 
 	expected := cfg.Runner.HostConfig
 	if expected == nil {
-		t.Fatal("テスト設定の HostConfig が nil です")
+		t.Fatal("test HostConfig is nil")
 	}
 	if hc.Runtime != expected.Runtime || hc.NetworkMode != expected.NetworkMode || hc.Privileged != expected.Privileged {
-		t.Fatalf("daemon 上の HostConfig が設定値と一致しません: runtime=%q network=%q privileged=%v", hc.Runtime, hc.NetworkMode, hc.Privileged)
+		t.Fatalf("HostConfig on the daemon differs from the configuration: runtime=%q network=%q privileged=%v", hc.Runtime, hc.NetworkMode, hc.Privileged)
 	}
 	if !slices.Equal(hc.CapDrop, expected.CapDrop) || !slices.Equal(hc.CapAdd, expected.CapAdd) {
-		t.Fatalf("daemon 上の capability が設定値と一致しません: drop=%v add=%v", hc.CapDrop, hc.CapAdd)
+		t.Fatalf("capabilities on the daemon differ from the configuration: drop=%v add=%v", hc.CapDrop, hc.CapAdd)
 	}
 	if len(hc.Mounts) != len(expected.Mounts) || len(hc.Mounts) != 1 {
-		t.Fatalf("daemon 上の mount が設定値と一致しません: got=%+v want=%+v", hc.Mounts, expected.Mounts)
+		t.Fatalf("mounts on the daemon differ from the configuration: got=%+v want=%+v", hc.Mounts, expected.Mounts)
 	}
 	m := hc.Mounts[0]
 	wantMount := expected.Mounts[0]
 	if m.Type != mount.TypeTmpfs || m.Target != wantMount.Target || m.TmpfsOptions == nil || wantMount.TmpfsOptions == nil ||
 		m.TmpfsOptions.SizeBytes != wantMount.TmpfsOptions.SizeBytes || m.TmpfsOptions.Mode != wantMount.TmpfsOptions.Mode {
-		t.Fatalf("daemon 上の tmpfs が設定値と一致しません: got=%+v want=%+v", m, wantMount)
+		t.Fatalf("tmpfs on the daemon differs from the configuration: got=%+v want=%+v", m, wantMount)
 	}
 }
 
@@ -194,7 +194,7 @@ func fetchLogs(t *testing.T, c *Client, containerID string, limit int) LogResult
 		Tail:           "all",
 	})
 	if err != nil {
-		t.Fatalf("FetchLogs が失敗しました: %v", err)
+		t.Fatalf("FetchLogs failed: %v", err)
 	}
 	return logs
 }
@@ -236,26 +236,26 @@ func runtimeNames(runtimes map[string]system.RuntimeWithStatus) []string {
 func TestDindLifecycle_RunscDaemon(t *testing.T) {
 	c, err := New(integrationHost, 2*time.Minute)
 	if err != nil {
-		t.Fatalf("Docker client を作成できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to create Docker client (missing daemon is a test failure): %v", err)
 	}
 	defer c.Close()
 	if _, err := c.Ping(t.Context()); err != nil {
-		t.Fatalf("Docker daemon に接続できませんでした (daemon 不在とみなして fail): %v", err)
+		t.Fatalf("failed to connect to the Docker daemon (missing daemon is a test failure): %v", err)
 	}
 	info, err := c.Info(t.Context())
 	if err != nil {
-		t.Fatalf("Docker Info を取得できませんでした: %v", err)
+		t.Fatalf("failed to retrieve Docker Info: %v", err)
 	}
 
 	if _, ok := info.Info.Runtimes["runsc"]; !ok {
-		t.Skipf("Docker daemon に runsc runtime が登録されていません。登録済み runtime: %v", runtimeNames(info.Info.Runtimes))
+		t.Skipf("runsc is not registered in the Docker daemon; registered runtimes: %v", runtimeNames(info.Info.Runtimes))
 	}
 	imageRef := prepareDindImage(t, c)
 	// The shared sentinel proves unmanaged containers are untouched.
 	createUnmanagedSentinel(t, c, imageRef)
 
-	t.Run("自然終了と dockerd _ping", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeNatural) })
-	t.Run("signal 転送と cleanup", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeSignal) })
+	t.Run("natural exit and dockerd _ping", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeNatural) })
+	t.Run("signal forwarding and cleanup", func(t *testing.T) { runDindContainer(t, c, imageRef, dindModeSignal) })
 }
 
 // dindRunMode selects the container exit path.
@@ -277,7 +277,7 @@ func dindTestTimeout(t *testing.T) time.Duration {
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
-		t.Fatalf("%s が正の duration ではありません: %q", dindTimeoutEnv, raw)
+		t.Fatalf("%s must be a positive duration: %q", dindTimeoutEnv, raw)
 	}
 	return d
 }
@@ -289,11 +289,11 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 	suffix := strconv.FormatInt(scaleSetID, 16)
 	runnerName := model.RunnerName("dind-integration-test", suffix)
 	if !model.ValidRunnerName(runnerName) {
-		t.Fatalf("runner name が canonical 形式になりません: %q", runnerName)
+		t.Fatalf("runner name is not canonical: %q", runnerName)
 	}
 	containerName := model.ContainerName("dind-integration-test", runnerID, suffix)
 	if len(containerName) > 63 {
-		t.Fatalf("container name が 63 byte を超えています: %q", containerName)
+		t.Fatalf("container name exceeds 63 bytes: %q", containerName)
 	}
 	identity := model.RunnerIdentity{ScaleSetID: scaleSetID, RunnerID: runnerID, RunnerName: runnerName}
 
@@ -334,15 +334,15 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 
 	spec, err := BuildManagedSpec(input)
 	if err != nil {
-		t.Fatalf("BuildManagedSpec が失敗しました: %v", err)
+		t.Fatalf("BuildManagedSpec failed: %v", err)
 	}
 	create, err := c.CreateManaged(t.Context(), spec)
 	if err != nil {
-		t.Fatalf("CreateManaged が失敗しました: %v", err)
+		t.Fatalf("CreateManaged failed: %v", err)
 	}
 	containerID := create.ID
 	if containerID == "" {
-		t.Fatalf("CreateManaged が空の container ID を返しました")
+		t.Fatalf("CreateManaged returned an empty container ID")
 	}
 
 	t.Cleanup(func() { forceRemoveTestContainer(t, c, containerID, identity) })
@@ -350,16 +350,16 @@ func runDindContainer(t *testing.T, c *Client, imageRef string, mode dindRunMode
 	// Image-derived labels are allowed; the six managed labels must match.
 	inspect, err := c.ContainerInspect(t.Context(), containerID, mobyclient.ContainerInspectOptions{})
 	if err != nil {
-		t.Fatalf("作成直後の inspect が失敗しました: %v", err)
+		t.Fatalf("inspect immediately after creation failed: %v", err)
 	}
 	labels := inspect.Container.Config.Labels
 	if err := model.ValidateLabels(labels, identity); err != nil {
-		t.Fatalf("daemon 上の label が managed の contract を満たしません: %v", err)
+		t.Fatalf("labels on the daemon violate the managed contract: %v", err)
 	}
 	verifyDindInspectFields(t, inspect.Container, cfg, input)
 
 	if _, err := c.containerStart(t.Context(), containerID, mobyclient.ContainerStartOptions{}); err != nil {
-		t.Fatalf("containerStart が失敗しました (HostConfig と image の要件を確認してください): %v", err)
+		t.Fatalf("containerStart failed (check HostConfig and image requirements): %v", err)
 	}
 	verifyDindRun(t, c, containerID, mode)
 }
@@ -370,41 +370,41 @@ func verifyDindRun(t *testing.T, c *Client, containerID string, mode dindRunMode
 	if mode == dindModeSignal {
 		// Send SIGTERM after startup begins to exercise PID 1 forwarding.
 		if !waitForLogMarker(t, c, containerID, "Waiting for Docker daemon", 90*time.Second) {
-			t.Fatalf("\"Waiting for Docker daemon\" が log に現れませんでした (container が早期に終了した可能性があります)")
+			t.Fatalf("\"Waiting for Docker daemon\" did not appear in logs (the container may have exited early)")
 		}
 		if _, err := c.c.ContainerKill(t.Context(), containerID, mobyclient.ContainerKillOptions{Signal: "SIGTERM"}); err != nil {
-			t.Fatalf("SIGTERM の送信に失敗しました: %v", err)
+			t.Fatalf("failed to send SIGTERM: %v", err)
 		}
 	}
 	status, logs := waitExit(t, c, containerID, timeout)
 	switch mode {
 	case dindModeNatural:
 		if status != 0 {
-			t.Fatalf("container の終了 code が 0 ではありません: %d。stderr 抜粋: %s", status, snippet(logs.Stderr))
+			t.Fatalf("container exited with code %d; stderr excerpt: %s", status, snippet(logs.Stderr))
 		}
 		if !strings.Contains(logs.Stderr, "Docker daemon is ready") {
-			t.Fatalf("inner dockerd の _ping が確認できません。stderr 抜粋: %s", snippet(logs.Stderr))
+			t.Fatalf("inner dockerd _ping was not observed; stderr excerpt: %s", snippet(logs.Stderr))
 		}
 		if !strings.Contains(logs.Stderr, "Starting runner") {
-			t.Fatalf("runner の起動が確認できません。stderr 抜粋: %s", snippet(logs.Stderr))
+			t.Fatalf("runner startup was not observed; stderr excerpt: %s", snippet(logs.Stderr))
 		}
 		if strings.Contains(logs.Stderr, "Must not run interactively with sudo") || strings.Contains(logs.Stdout, "Must not run interactively with sudo") {
-			t.Fatal("runner が root で起動されました (setpriv による privilege drop が機能していません)")
+			t.Fatal("runner started as root; setpriv privilege drop is not working")
 		}
 		if !strings.Contains(logs.Stdout, "Runner listener exit with terminated error") {
-			t.Fatalf("runner の JIT 終了が確認できません。stdout 抜粋: %s", snippet(logs.Stdout))
+			t.Fatalf("runner JIT termination was not observed; stdout excerpt: %s", snippet(logs.Stdout))
 		}
 	case dindModeSignal:
 		// TERM/INT may be reported by either PID 1 or the runner.
 		if status == 137 || (status != 143 && status != 130 && status != 0) {
-			t.Fatalf("container の終了 code が graceful な範囲にありません: %d", status)
+			t.Fatalf("container exit code is outside the graceful range: %d", status)
 		}
 	default:
-		t.Fatalf("未知の mode: %s", mode)
+		t.Fatalf("unknown mode: %s", mode)
 	}
 	// EXIT cleanup must stop the inner daemon.
 	if !strings.Contains(logs.Stderr, "Stopping Docker daemon") {
-		t.Fatalf("dockerd 停止 cleanup が確認できません。stderr 抜粋: %s", snippet(logs.Stderr))
+		t.Fatalf("dockerd stop cleanup was not observed; stderr excerpt: %s", snippet(logs.Stderr))
 	}
 }
 
@@ -415,7 +415,7 @@ func waitExit(t *testing.T, c *Client, containerID string, timeout time.Duration
 	waitResult, err := c.WaitContainer(waitCtx, containerID, mobyclient.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	cancel()
 	if err != nil {
-		t.Fatalf("container が期限内に終了しませんでした: %v", err)
+		t.Fatalf("container did not exit before the deadline: %v", err)
 	}
 	return waitResult.StatusCode, fetchLogs(t, c, containerID, 512*1024)
 }

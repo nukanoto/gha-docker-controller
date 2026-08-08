@@ -24,9 +24,9 @@ func TestNew_SecretNotExposedInError(t *testing.T) {
 	t.Run("PAT", func(t *testing.T) {
 		const marker = "ghp_SECRET_MARKER_XYZ"
 		if _, err := New(newTestConfig("", marker), "v1", "abc"); err == nil {
-			t.Fatalf("不正な config が error になりません")
+			t.Fatalf("invalid config did not return an error")
 		} else if strings.Contains(err.Error(), marker) {
-			t.Fatalf("PAT が error に露出しました")
+			t.Fatalf("PAT was exposed in the error")
 		}
 	})
 	t.Run("App private key", func(t *testing.T) {
@@ -42,12 +42,12 @@ func TestNew_SecretNotExposedInError(t *testing.T) {
 		}
 		if _, err := New(appCfg(""), "v1", "abc"); err == nil ||
 			!strings.Contains(err.Error(), "github app auth: app private key is required") {
-			t.Fatalf("App 検証が error になりません")
+			t.Fatalf("App validation did not return an error")
 		}
 		if _, err := New(appCfg(marker), "v1", "abc"); err == nil {
-			t.Fatalf("不正な config が error になりません")
+			t.Fatalf("invalid config did not return an error")
 		} else if strings.Contains(err.Error(), marker) {
-			t.Fatalf("private key が error に露出しました")
+			t.Fatalf("private key was exposed in the error")
 		}
 	})
 }
@@ -55,9 +55,9 @@ func TestNew_SecretNotExposedInError(t *testing.T) {
 // TestNew_AuthNotConfiguredIsRejected covers the constructor guard.
 func TestNew_AuthNotConfiguredIsRejected(t *testing.T) {
 	if _, err := New(newTestConfig("octo", ""), "v1", "abc"); err == nil {
-		t.Fatalf("認証未設定の config が error になりません")
+		t.Fatalf("config without authentication did not return an error")
 	} else if !strings.Contains(err.Error(), "github auth is not configured") {
-		t.Fatalf("認証未設定の error 文言が不正です: %v", err)
+		t.Fatalf("error for missing authentication is incorrect: %v", err)
 	}
 }
 
@@ -65,9 +65,9 @@ func TestNew_AuthNotConfiguredIsRejected(t *testing.T) {
 func TestNew_ValidConfigConstructsWithoutIO(t *testing.T) {
 	client, err := New(newTestConfig("octo", "ghp_validtoken"), "v1", "abc")
 	if err != nil {
-		t.Fatalf("妥当な config が error になりました: %v", err)
+		t.Fatalf("valid config returned an error: %v", err)
 	}
 	if client == nil {
-		t.Fatalf("Client が nil です")
+		t.Fatalf("Client is nil")
 	}
 }

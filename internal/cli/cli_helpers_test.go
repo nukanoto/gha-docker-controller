@@ -22,7 +22,7 @@ func writeTempFile(t *testing.T, name, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("一時 file の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create temporary file: %v", err)
 	}
 	return path
 }
@@ -53,12 +53,12 @@ func TestLogWarnings_PathAndMessageOnly(t *testing.T) {
 
 	var got map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
-		t.Fatal("logWarnings の出力が JSON ではありません (error 本文は出力しません)")
+		t.Fatal("logWarnings output is not JSON; error details are intentionally omitted")
 	}
 	if got["msg"] != "config warning" ||
 		got["path"] != "github.app.privateKeyFile" ||
 		got["warning"] == "" {
-		t.Fatal("logWarnings の field が期待と異なります (warning 本文は出力しません)")
+		t.Fatal("logWarnings fields differ from expectation; warning details are intentionally omitted")
 	}
 }
 
@@ -69,20 +69,20 @@ func TestNewLogger_JSONDefaultAndLevelFiltering(t *testing.T) {
 	logger.Info("hidden info")
 	logger.Error("shown error")
 	if !strings.HasPrefix(buf.String(), "{") {
-		t.Fatalf("JSON format の出力が JSON ではありません: %q", buf.String())
+		t.Fatalf("JSON format did not produce JSON: %q", buf.String())
 	}
 	if strings.Contains(buf.String(), "hidden info") {
-		t.Fatalf("level error で info が出力されています: %q", buf.String())
+		t.Fatalf("info was emitted at error level: %q", buf.String())
 	}
 	if !strings.Contains(buf.String(), "shown error") {
-		t.Fatalf("level error で error が出力されていません: %q", buf.String())
+		t.Fatalf("error was not emitted at error level: %q", buf.String())
 	}
 
 	buf.Reset()
 	textLogger := newLogger(config.LogFormatText, config.LogLevelInfo, &buf)
 	textLogger.Info("hello")
 	if !strings.Contains(buf.String(), "msg=hello") {
-		t.Fatalf("text format の出力形式が期待と異なります: %q", buf.String())
+		t.Fatalf("text format differs from expectation: %q", buf.String())
 	}
 }
 
@@ -100,7 +100,7 @@ func TestSlogLevel_Mapping(t *testing.T) {
 	}
 	for _, tt := range tests {
 		if got := slogLevel(tt.level); got != tt.want {
-			t.Fatalf("slogLevel(%q) が期待と異なります: %v", tt.level, got)
+			t.Fatalf("slogLevel(%q) differs from expectation: %v", tt.level, got)
 		}
 	}
 }

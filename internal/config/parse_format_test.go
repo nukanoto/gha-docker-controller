@@ -31,7 +31,7 @@ func TestParseDuration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var got Duration
 			if err := unmarshalInto(t, tt.name, tt.doc, &got, tt.err); err == nil && tt.err == "" && got != Duration(tt.want) {
-				t.Fatalf("duration の変換結果が不正です: got=%v want=%v", got, tt.want)
+				t.Fatalf("duration conversion is invalid: got=%v want=%v", got, tt.want)
 			}
 		})
 	}
@@ -39,7 +39,7 @@ func TestParseDuration(t *testing.T) {
 
 func TestNormalizeDockerHost(t *testing.T) {
 	if got := normalizeDockerHost("unix:///tmp/docker.sock/"); got != "unix:///tmp/docker.sock" {
-		t.Fatalf("Docker host の正規化結果が不正です: %q", got)
+		t.Fatalf("Docker host normalization is invalid: %q", got)
 	}
 }
 
@@ -54,7 +54,7 @@ func TestValidName(t *testing.T) {
 		{"日本語", false},
 	} {
 		if got := validName(test.value); got != test.want {
-			t.Fatalf("validName(%q) が不正です: got=%v want=%v", test.value, got, test.want)
+			t.Fatalf("validName(%q) is invalid: got=%v want=%v", test.value, got, test.want)
 		}
 	}
 }

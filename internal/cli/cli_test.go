@@ -24,13 +24,13 @@ func assertStream(t *testing.T, name, stream string, want []string) {
 	t.Helper()
 	if want == nil {
 		if stream != "" {
-			t.Fatalf("%s は空であるべきですが出力があります: %q", name, stream)
+			t.Fatalf("%s should be empty, but contains output: %q", name, stream)
 		}
 		return
 	}
 	for _, w := range want {
 		if !strings.Contains(stream, w) {
-			t.Fatalf("%s に %q がありません:\n%s", name, w, stream)
+			t.Fatalf("%s does not contain %q:\n%s", name, w, stream)
 		}
 	}
 }
@@ -56,7 +56,7 @@ func TestRun(t *testing.T) {
 		wantErr  []string
 	}{
 		{
-			name:     "version は ldflags 注入値を固定 key で stdout へ出す",
+			name:     "version prints ldflags values to stdout",
 			args:     []string{"version"},
 			setup:    func(t *testing.T) { injectBuildVars(t, "v9.9.9-test", "deadbeefcafe", "2026-01-02T03:04:05Z") },
 			wantCode: ExitOK,
@@ -68,7 +68,7 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "version は ldflags 未設定の既定値を stdout へ出す",
+			name:     "version prints default values to stdout",
 			args:     []string{"version"},
 			wantCode: ExitOK,
 			wantOut: []string{
@@ -79,90 +79,90 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "command 位置の -h は usage を stdout へ出して成功する",
+			name:     "command-level -h prints usage to stdout",
 			args:     []string{"-h"},
 			wantCode: ExitOK,
 			wantOut:  []string{"Usage: arc-docker"},
 		},
 		{
-			name:     "command 位置の --help は usage を stdout へ出して成功する",
+			name:     "command-level --help prints usage to stdout",
 			args:     []string{"--help"},
 			wantCode: ExitOK,
 			wantOut:  []string{"Usage: arc-docker"},
 		},
 		{
-			name:     "serve の -h は専用 usage を stderr へ出して成功する",
+			name:     "serve -h prints command usage to stderr",
 			args:     []string{"serve", "-h"},
 			wantCode: ExitOK,
 			wantErr:  []string{"Usage: arc-docker serve"},
 		},
 		{
-			name:     "check の -h は専用 usage を stderr へ出して成功する",
+			name:     "check -h prints command usage to stderr",
 			args:     []string{"check", "-h"},
 			wantCode: ExitOK,
 			wantErr:  []string{"Usage: arc-docker check"},
 		},
 		{
-			name:     "version の -h は専用 usage を stderr へ出して成功する",
+			name:     "version -h prints command usage to stderr",
 			args:     []string{"version", "-h"},
 			wantCode: ExitOK,
 			wantErr:  []string{"Usage: arc-docker version"},
 		},
 		{
-			name:     "command 欠落は usage を stderr へ出して ExitUsage で終了する",
+			name:     "missing command prints usage and returns ExitUsage",
 			wantCode: ExitUsage,
 			wantErr:  []string{"Usage: arc-docker"},
 		},
 		{
-			name:     "未知 command は error と usage を stderr へ出して ExitUsage で終了する",
+			name:     "unknown command prints error and usage and returns ExitUsage",
 			args:     []string{"frobnicate"},
 			wantCode: ExitUsage,
 			wantErr:  []string{`unknown command "frobnicate"`, "Usage: arc-docker"},
 		},
 		{
-			name:     "serve の余分な引数は ExitUsage で終了する",
+			name:     "serve rejects an extra argument",
 			args:     []string{"serve", "extra"},
 			wantCode: ExitUsage,
 			wantErr:  []string{`serve: unexpected argument "extra"`},
 		},
 		{
-			name:     "check の余分な引数は ExitUsage で終了する",
+			name:     "check rejects an extra argument",
 			args:     []string{"check", "extra"},
 			wantCode: ExitUsage,
 			wantErr:  []string{`check: unexpected argument "extra"`},
 		},
 		{
-			name:     "version の余分な引数は ExitUsage で終了する",
+			name:     "version rejects an extra argument",
 			args:     []string{"version", "extra"},
 			wantCode: ExitUsage,
 			wantErr:  []string{`version: unexpected argument "extra"`},
 		},
 		{
-			name:     "serve の未知 flag は ExitUsage で終了する",
+			name:     "serve rejects an unknown flag",
 			args:     []string{"serve", "--frobnicate"},
 			wantCode: ExitUsage,
 			wantErr:  []string{"flag provided but not defined"},
 		},
 		{
-			name:     "check の未知 flag は ExitUsage で終了する",
+			name:     "check rejects an unknown flag",
 			args:     []string{"check", "--frobnicate"},
 			wantCode: ExitUsage,
 			wantErr:  []string{"flag provided but not defined"},
 		},
 		{
-			name:     "version の未知 flag は ExitUsage で終了する",
+			name:     "version rejects an unknown flag",
 			args:     []string{"version", "--frobnicate"},
 			wantCode: ExitUsage,
 			wantErr:  []string{"flag provided but not defined"},
 		},
 		{
-			name:     "serve の config 欠落は error を stderr へ出して ExitError で終了する",
+			name:     "serve returns ExitError for a missing config",
 			args:     []string{"serve", "--config", missingConfig},
 			wantCode: ExitError,
 			wantErr:  []string{"load config"},
 		},
 		{
-			name:     "check の config 欠落は error を stderr へ出して ExitError で終了する",
+			name:     "check returns ExitError for a missing config",
 			args:     []string{"check", "--config", missingConfig},
 			wantCode: ExitError,
 			wantErr:  []string{"load config"},
@@ -175,7 +175,7 @@ func TestRun(t *testing.T) {
 			}
 			code, stdout, stderr := runCLI(t, tt.args...)
 			if code != tt.wantCode {
-				t.Fatalf("終了 code が期待と異なります: got %d, want %d", code, tt.wantCode)
+				t.Fatalf("exit code differs from expectation: got %d, want %d", code, tt.wantCode)
 			}
 			assertStream(t, "stdout", stdout, tt.wantOut)
 			assertStream(t, "stderr", stderr, tt.wantErr)
@@ -195,16 +195,16 @@ func TestRun_InvalidConfigDoesNotLeakSecret(t *testing.T) {
 		t.Run(cmd, func(t *testing.T) {
 			code, stdout, stderr := runCLI(t, cmd, "--config", cfgPath)
 			if code != ExitError {
-				t.Fatalf("%s の不正 config の終了 code が ExitError ではありません: %d", cmd, code)
+				t.Fatalf("%s invalid config returned %d instead of ExitError", cmd, code)
 			}
 			if !strings.Contains(stderr, "invalid config") {
-				t.Fatalf("%s の validation error が stderr にありません", cmd)
+				t.Fatalf("%s validation error is missing from stderr", cmd)
 			}
 			if stdout != "" {
-				t.Fatalf("%s は stdout へ何も出力しません", cmd)
+				t.Fatalf("%s should not write to stdout", cmd)
 			}
 			if strings.Contains(stderr, secretMarker) || strings.Contains(stdout, secretMarker) {
-				t.Fatalf("%s の出力へ秘密値 (marker) が漏れています", cmd)
+				t.Fatalf("%s output contains the secret marker", cmd)
 			}
 		})
 	}

@@ -42,21 +42,21 @@ type e2eState struct {
 // TestGitHubIntegration is the opt-in GitHub integration entry point.
 func TestGitHubIntegration(t *testing.T) {
 	if os.Getenv("GHA_CONTROLLER_E2E") != "1" {
-		t.Skip("GHA_CONTROLLER_E2E=1 が設定されていないため GitHub integration を実行しません (明示 credential の opt-in が必要です)")
+		t.Skip("GHA_CONTROLLER_E2E=1 is not set; skipping GitHub integration (explicit credential opt-in is required)")
 	}
 	cfgPath := os.Getenv("GHA_CONTROLLER_E2E_CONFIG")
 	if cfgPath == "" {
-		t.Skip("GHA_CONTROLLER_E2E_CONFIG が設定されていないため GitHub integration を実行しません (専用 config file の path が必要です)")
+		t.Skip("GHA_CONTROLLER_E2E_CONFIG is not set; skipping GitHub integration (a dedicated config file path is required)")
 	}
 	cfg, warnings, err := config.Load(cfgPath)
 	if err != nil {
-		t.Fatalf("GHA_CONTROLLER_E2E_CONFIG の config を読み込めませんでした: %v", err)
+		t.Fatalf("failed to load config from GHA_CONTROLLER_E2E_CONFIG: %v", err)
 	}
 	for _, w := range warnings {
-		t.Logf("config warning を確認しました: %s: %s", w.Path, w.Message)
+		t.Logf("config warning: %s: %s", w.Path, w.Message)
 	}
 	if !strings.HasPrefix(cfg.ScaleSet.Name, e2eSetNamePrefix) {
-		t.Fatalf("config の scaleset.name %q は test 専用 prefix %q を持ちません (production 名への誤実行を拒否します)", cfg.ScaleSet.Name, e2eSetNamePrefix)
+		t.Fatalf("config Scale Set name %q lacks test-only prefix %q; refusing to target a production name", cfg.ScaleSet.Name, e2eSetNamePrefix)
 	}
 
 	state := &e2eState{
@@ -66,7 +66,7 @@ func TestGitHubIntegration(t *testing.T) {
 	}
 	state.client, err = New(cfg, "integration-test", "integration-test")
 	if err != nil {
-		t.Fatalf("scaleset client を作成できませんでした: %v", err)
+		t.Fatalf("failed to create Scale Set client: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), e2eTestTimeout)
 	defer cancel()
@@ -80,7 +80,7 @@ func TestGitHubIntegration(t *testing.T) {
 	} else if check != nil && check.ScaleSet != nil {
 		testListenerSession(t, state, check.ScaleSet.ID)
 	} else {
-		t.Log("既存の Scale Set が無く GHA_CONTROLLER_E2E_MUTATING=1 も無いため listener session の検証は skip します (read-only check のみ)")
+		t.Log("an existing Scale Set is unavailable and GHA_CONTROLLER_E2E_MUTATING=1 is not set; skipping listener session validation (read-only check only)")
 	}
 
 	testSessionFailureNonExposure(t, state)
@@ -92,36 +92,36 @@ func testReadOnlyCheck(t *testing.T, state *e2eState) *CheckResult {
 	result, err := state.client.CheckScaleSet(state.ctx, state.cfg.ScaleSet.RunnerGroup, state.cfg.ScaleSet.Name)
 	if err != nil {
 		assertNoSecrets(t, err, state.token)
-		t.Fatalf("CheckScaleSet が失敗しました: %v", err)
+		t.Fatalf("CheckScaleSet failed: %v", err)
 	}
 	if result.Group == nil {
-		t.Fatalf("CheckScaleSet の runner group が nil です (protocol fatal)")
+		t.Fatalf("CheckScaleSet returned a nil runner group (protocol failure)")
 	}
 	if result.Group.ID <= 0 {
-		t.Fatalf("runner group %q の ID が正ではありません: %d", state.cfg.ScaleSet.RunnerGroup, result.Group.ID)
+		t.Fatalf("runner group %q has a non-positive ID: %d", state.cfg.ScaleSet.RunnerGroup, result.Group.ID)
 	}
 	if result.Group.Name != state.cfg.ScaleSet.RunnerGroup {
-		t.Fatalf("runner group 名が要求と一致しません: got %q, want %q", result.Group.Name, state.cfg.ScaleSet.RunnerGroup)
+		t.Fatalf("runner group name differs from the request: got %q want %q", result.Group.Name, state.cfg.ScaleSet.RunnerGroup)
 	}
 	if result.ScaleSet != nil {
 		if result.ScaleSet.ID <= 0 {
-			t.Fatalf("Scale Set %q の ID が正ではありません: %d", state.cfg.ScaleSet.Name, result.ScaleSet.ID)
+			t.Fatalf("Scale Set %q has a non-positive ID: %d", state.cfg.ScaleSet.Name, result.ScaleSet.ID)
 		}
 		if result.ScaleSet.Name != state.cfg.ScaleSet.Name {
-			t.Fatalf("Scale Set 名が要求と一致しません: got %q, want %q", result.ScaleSet.Name, state.cfg.ScaleSet.Name)
+			t.Fatalf("Scale Set name differs from the request: got %q want %q", result.ScaleSet.Name, state.cfg.ScaleSet.Name)
 		}
 		if result.ScaleSet.RunnerGroupID != result.Group.ID {
-			t.Fatalf("Scale Set の group ID が GET した group と一致しません: set=%d group=%d", result.ScaleSet.RunnerGroupID, result.Group.ID)
+			t.Fatalf("Scale Set group ID differs from the fetched group: set=%d group=%d", result.ScaleSet.RunnerGroupID, result.Group.ID)
 		}
 		if result.Warning != "" {
-			t.Fatalf("Scale Set が存在するのに warning が返りました: %s", result.Warning)
+			t.Fatalf("warning returned for an existing Scale Set: %s", result.Warning)
 		}
-		t.Logf("既存 Scale Set %q (ID=%d) を read-only で取得しました", result.ScaleSet.Name, result.ScaleSet.ID)
+		t.Logf("fetched existing Scale Set %q (ID=%d) in read-only mode", result.ScaleSet.Name, result.ScaleSet.ID)
 	} else {
 		if result.Warning == "" {
-			t.Fatalf("Scale Set が存在しないのに warning が空です")
+			t.Fatalf("warning is empty for a missing Scale Set")
 		}
-		t.Logf("Scale Set %q は存在しません (read-only では作成権限を証明できない旨の warning): %s", state.cfg.ScaleSet.Name, result.Warning)
+		t.Logf("Scale Set %q is missing (read-only mode cannot prove create permission): %s", state.cfg.ScaleSet.Name, result.Warning)
 	}
 	return result
 }
@@ -131,32 +131,32 @@ func testDedicatedScaleSet(t *testing.T, state *e2eState) *scalesetapi.RunnerSca
 	t.Helper()
 	// Leave a uniquely named dedicated set for safe reruns.
 	setName := e2eSetNamePrefix + "set-" + fmt.Sprintf("%x", rand.Uint64())
-	t.Logf("専用 Scale Set 名: %s", setName)
+	t.Logf("dedicated Scale Set name: %s", setName)
 
 	ss, err := state.client.EnsureScaleSet(state.ctx, state.cfg.ScaleSet.RunnerGroup, setName)
 	if err != nil {
 		assertNoSecrets(t, err, state.token)
-		t.Fatalf("EnsureScaleSet が失敗しました: %v", err)
+		t.Fatalf("EnsureScaleSet failed: %v", err)
 	}
 	if ss == nil {
-		t.Fatalf("EnsureScaleSet が nil を返しました (protocol fatal)")
+		t.Fatalf("EnsureScaleSet returned nil (protocol failure)")
 	}
 
 	result, err := state.client.CheckScaleSet(state.ctx, state.cfg.ScaleSet.RunnerGroup, setName)
 	if err != nil {
 		assertNoSecrets(t, err, state.token)
-		t.Fatalf("作成後の CheckScaleSet が失敗しました: %v", err)
+		t.Fatalf("CheckScaleSet failed after creation: %v", err)
 	}
 	if result.ScaleSet == nil {
-		t.Fatalf("作成後の CheckScaleSet が set を認識しません")
+		t.Fatalf("CheckScaleSet did not find the set after creation")
 	}
 	if result.Warning != "" {
-		t.Fatalf("作成後の CheckScaleSet に warning が残っています: %s", result.Warning)
+		t.Fatalf("CheckScaleSet returned a warning after creation: %s", result.Warning)
 	}
 	if err := validateScaleSet(ss, result.Group.ID, setName); err != nil {
-		t.Fatalf("作成した Scale Set が契約に一致しません: %v", err)
+		t.Fatalf("created Scale Set violates the contract: %v", err)
 	}
-	t.Logf("専用 Scale Set (ID=%d) を取得/作成しました", ss.ID)
+	t.Logf("fetched or created dedicated Scale Set (ID=%d)", ss.ID)
 	return ss
 }
 
@@ -167,22 +167,22 @@ func testListenerSession(t *testing.T, state *e2eState, scaleSetID int) {
 	if err != nil {
 		assertNoSecrets(t, err, state.token)
 		assertNoURL(t, err)
-		t.Fatalf("ListenerClient を開始できませんでした: %v", err)
+		t.Fatalf("failed to start ListenerClient: %v", err)
 	}
 	// A failed delete is left to server-side expiry after redaction checks.
 	defer func() {
 		if err := lc.Close(state.ctx); err != nil {
 			assertNoSecrets(t, err, state.token)
 			assertNoURL(t, err)
-			t.Errorf("ListenerClient.Close が失敗しました (session は server 側の失効に任せます): %v", err)
+			t.Errorf("ListenerClient.Close failed (relying on server-side session expiry): %v", err)
 		}
 	}()
 
 	stats := lc.Session().Statistics
 	if stats == nil {
-		t.Fatalf("session 開始直後の Statistics が nil です (protocol fatal)")
+		t.Fatalf("Statistics is nil immediately after starting the session (protocol failure)")
 	}
-	t.Logf("初期 statistics: available=%d acquired=%d assigned=%d running=%d registered=%d busy=%d idle=%d",
+	t.Logf("initial statistics: available=%d acquired=%d assigned=%d running=%d registered=%d busy=%d idle=%d",
 		stats.TotalAvailableJobs, stats.TotalAcquiredJobs, stats.TotalAssignedJobs, stats.TotalRunningJobs,
 		stats.TotalRegisteredRunners, stats.TotalBusyRunners, stats.TotalIdleRunners)
 }
@@ -192,11 +192,11 @@ func testSessionFailureNonExposure(t *testing.T, state *e2eState) {
 	t.Helper()
 	_, err := state.client.NewListenerClient(state.ctx, e2eNonexistentScaleSetID, state.cfg.GitHub.Owner)
 	if err == nil {
-		t.Fatalf("存在しない Scale Set (ID=%d) への session 作成が成功しました", e2eNonexistentScaleSetID)
+		t.Fatalf("session creation succeeded for missing Scale Set (ID=%d)", e2eNonexistentScaleSetID)
 	}
 	assertNoSecrets(t, err, state.token)
 	assertNoURL(t, err)
-	t.Log("failure 経路の error に credential / session token の露出がないことを確認しました")
+	t.Log("verified that the failure-path error does not expose credentials or the session token")
 }
 
 // assertNoSecrets checks redaction without printing the error body.
@@ -208,7 +208,7 @@ func assertNoSecrets(t *testing.T, err error, secrets ...string) {
 	msg := err.Error()
 	for _, s := range secrets {
 		if s != "" && strings.Contains(msg, s) {
-			t.Fatalf("error の文字列に秘密が含まれています (秘密非露出契約違反)。error 本文は秘密露出のため出力しません")
+			t.Fatalf("error string contains a secret (secret non-disclosure contract violation); error text is omitted to avoid exposing it")
 		}
 	}
 }
@@ -221,6 +221,6 @@ func assertNoURL(t *testing.T, err error) {
 	}
 	msg := err.Error()
 	if strings.Contains(msg, "http://") || strings.Contains(msg, "https://") {
-		t.Fatalf("error の文字列に URL が含まれています (session token 露出の可能性)。error 本文は出力しません")
+		t.Fatalf("error string contains a URL (possible session token exposure); error text is omitted")
 	}
 }

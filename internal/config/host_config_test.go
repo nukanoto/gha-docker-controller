@@ -33,7 +33,7 @@ func TestLoad_HostConfigCaseInsensitiveFieldNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c, _ := loadDoc(t, hostConfigDoc(t, "    "+tt.key+": [CHOWN]\n"))
 			if !reflect.DeepEqual(c.Runner.HostConfig.CapAdd, []string{"CHOWN"}) {
-				t.Fatalf("CapAdd の変換結果が不正です: %v", c.Runner.HostConfig.CapAdd)
+				t.Fatalf("CapAdd conversion is invalid: %v", c.Runner.HostConfig.CapAdd)
 			}
 		})
 	}
@@ -61,29 +61,29 @@ func TestLoad_HostConfigFieldsAndNestedValues(t *testing.T) {
 	c, _ := loadDoc(t, doc)
 	hc := c.Runner.HostConfig
 	if len(hc.DNS) != 1 || hc.DNS[0].String() != "1.1.1.1" {
-		t.Fatalf("DNS の変換結果が不正です: %v", hc.DNS)
+		t.Fatalf("DNS conversion is invalid: %v", hc.DNS)
 	}
 	if hc.CPUQuota != 100000 {
-		t.Fatalf("CPUQuota の変換結果が不正です: %d", hc.CPUQuota)
+		t.Fatalf("CPUQuota conversion is invalid: %d", hc.CPUQuota)
 	}
 	if hc.RestartPolicy.Name != container.RestartPolicyAlways || hc.RestartPolicy.MaximumRetryCount != 3 {
-		t.Fatalf("RestartPolicy の変換結果が不正です: %+v", hc.RestartPolicy)
+		t.Fatalf("RestartPolicy conversion is invalid: %+v", hc.RestartPolicy)
 	}
 	if len(hc.Mounts) != 1 || hc.Mounts[0].Target != "/tmp/cache" || !hc.Mounts[0].ReadOnly {
-		t.Fatalf("Mounts の変換結果が不正です: %+v", hc.Mounts)
+		t.Fatalf("Mounts conversion is invalid: %+v", hc.Mounts)
 	}
 	if hc.Tmpfs["/Case/Path"] != "rw" || hc.Sysctls["Net.IPv4.Foo"] != "1" {
-		t.Fatalf("map key が変換されています: tmpfs=%v sysctls=%v", hc.Tmpfs, hc.Sysctls)
+		t.Fatalf("map keys were unexpectedly converted: tmpfs=%v sysctls=%v", hc.Tmpfs, hc.Sysctls)
 	}
 	if !hc.Privileged || len(hc.Binds) != 1 || hc.Runtime != "custom-runtime" {
-		t.Fatalf("任意 HostConfig field が失われています: %+v", hc)
+		t.Fatalf("optional HostConfig fields were lost: %+v", hc)
 	}
 }
 
 func TestLoad_HostConfigResourcesAreFlat(t *testing.T) {
 	c, _ := loadDoc(t, hostConfigDoc(t, "    memory: 4096\n    pidsLimit: 64\n"))
 	if c.Runner.HostConfig.Memory != 4096 || c.Runner.HostConfig.PidsLimit == nil || *c.Runner.HostConfig.PidsLimit != 64 {
-		t.Fatalf("Resources の flat field が不正です: %+v", c.Runner.HostConfig.Resources)
+		t.Fatalf("flat Resources fields are invalid: %+v", c.Runner.HostConfig.Resources)
 	}
 
 	_, _, err := Load(writeConfig(t, hostConfigDoc(t, "    resources:\n      memory: 4096\n")))
@@ -114,12 +114,12 @@ func TestLoad_HostConfigEmptyObjectIsDistinctFromOmitted(t *testing.T) {
 	omitted, _ := loadDoc(t, baseWithKey(t))
 	empty, _ := loadDoc(t, hostConfigDoc(t, ""))
 	if omitted.Runner.HostConfig != nil {
-		t.Fatal("HostConfig 未指定なのに nil ではありません")
+		t.Fatal("HostConfig is non-nil when it was omitted")
 	}
 	if empty.Runner.HostConfig == nil {
-		t.Fatal("空の HostConfig が nil です")
+		t.Fatal("empty HostConfig is nil")
 	}
 	if !reflect.DeepEqual(*empty.Runner.HostConfig, container.HostConfig{}) {
-		t.Fatalf("空の HostConfig が空 struct ではありません: %+v", *empty.Runner.HostConfig)
+		t.Fatalf("empty HostConfig is not an empty struct: %+v", *empty.Runner.HostConfig)
 	}
 }

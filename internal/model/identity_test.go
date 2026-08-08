@@ -20,21 +20,21 @@ func TestBuildLabels_SixLabelsRoundTrip(t *testing.T) {
 	labels := BuildLabels(identity, "controller-instance-1", createdAt)
 
 	if got, want := len(labels), 6; got != want {
-		t.Fatalf("label 数が不正です: 期待値 %d、実測値 %d、labels %+v", want, got, labels)
+		t.Fatalf("label count is incorrect: want=%d got=%d labels=%+v", want, got, labels)
 	}
 	for _, key := range RequiredLabelKeys() {
 		if _, ok := labels[key]; !ok {
-			t.Fatalf("必須 label %q がありません: labels %+v", key, labels)
+			t.Fatalf("required label %q is missing: labels=%+v", key, labels)
 		}
 	}
 	if err := ValidateLabels(labels, identity); err != nil {
-		t.Fatalf("生成した label の検証に失敗しました: %v", err)
+		t.Fatalf("generated labels failed validation: %v", err)
 	}
 	if !LabelsMatchIdentity(labels, identity) {
-		t.Fatal("生成した label が identity と一致しません")
+		t.Fatal("generated labels do not match the identity")
 	}
 	if got, want := labels[CreatedAtLabelKey], "2026-02-28T17:03:04.000005678Z"; got != want {
-		t.Fatalf("created-at の UTC RFC3339Nano 表現が不正です: 期待値 %q、実測値 %q", want, got)
+		t.Fatalf("created-at has an invalid UTC RFC3339Nano representation: want=%q got=%q", want, got)
 	}
 }
 
@@ -61,16 +61,16 @@ func TestValidateLabels_InvalidEachRequiredLabel(t *testing.T) {
 			labels := BuildLabels(identity, "controller-instance-1", createdAt)
 			tt.mutate(labels)
 			if err := ValidateLabels(labels, identity); err == nil {
-				t.Fatalf("不正な label が受理されました: %+v", labels)
+				t.Fatalf("invalid labels were accepted: %+v", labels)
 			}
 			if LabelsMatchIdentity(labels, identity) {
-				t.Fatalf("不正な label が identity と一致しました: %+v", labels)
+				t.Fatalf("invalid labels matched the identity: %+v", labels)
 			}
 		})
 	}
 
 	if err := ValidateLabels(nil, identity); err == nil {
-		t.Fatal("nil label map が受理されました")
+		t.Fatal("nil label map was accepted")
 	}
 }
 
@@ -90,7 +90,7 @@ func TestValidateLabels_IdentityAndTimestampValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			labels := BuildLabels(testLabelIdentity(), "controller-instance-1", createdAt)
 			if err := ValidateLabels(labels, tt.identity); err == nil {
-				t.Fatalf("不正な identity で label が受理されました: %+v", tt.identity)
+				t.Fatalf("labels were accepted for an invalid identity: %+v", tt.identity)
 			}
 		})
 	}

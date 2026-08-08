@@ -14,20 +14,20 @@ func TestValidateRunnerGroup(t *testing.T) {
 		want  string
 		ok    bool
 	}{
-		{name: "nil 応答", group: nil, want: "default"},
-		{name: "非正の ID", group: &scalesetapi.RunnerGroup{ID: 0, Name: "default"}, want: "default"},
-		{name: "name の不一致", group: &scalesetapi.RunnerGroup{ID: 1, Name: "other"}, want: "default"},
-		{name: "空の要求名", group: &scalesetapi.RunnerGroup{ID: 1, Name: "default"}, want: ""},
-		{name: "一致する応答", group: &scalesetapi.RunnerGroup{ID: 5, Name: "self-hosted"}, want: "self-hosted", ok: true},
+		{name: "nil response", group: nil, want: "default"},
+		{name: "non-positive ID", group: &scalesetapi.RunnerGroup{ID: 0, Name: "default"}, want: "default"},
+		{name: "name mismatch", group: &scalesetapi.RunnerGroup{ID: 1, Name: "other"}, want: "default"},
+		{name: "empty requested name", group: &scalesetapi.RunnerGroup{ID: 1, Name: "default"}, want: ""},
+		{name: "matching response", group: &scalesetapi.RunnerGroup{ID: 5, Name: "self-hosted"}, want: "self-hosted", ok: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateRunnerGroup(tt.group, tt.want)
 			if tt.ok && err != nil {
-				t.Fatalf("一致する group を拒否しました: %v", err)
+				t.Fatalf("rejected matching group: %v", err)
 			}
 			if !tt.ok && err == nil {
-				t.Fatalf("不正な応答が error になりません: %v", err)
+				t.Fatalf("invalid response did not return an error: %v", err)
 			}
 		})
 	}
@@ -47,27 +47,27 @@ func TestValidateScaleSet(t *testing.T) {
 		ss   *scalesetapi.RunnerScaleSet
 		ok   bool
 	}{
-		{name: "nil 応答", ss: nil},
-		{name: "非正の ID", ss: &scalesetapi.RunnerScaleSet{
+		{name: "nil response", ss: nil},
+		{name: "non-positive ID", ss: &scalesetapi.RunnerScaleSet{
 			ID: 0, Name: "scale-set", RunnerGroupID: 5,
 			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
-		{name: "name の不一致", ss: &scalesetapi.RunnerScaleSet{
+		{name: "name mismatch", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "other", RunnerGroupID: 5,
 			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
-		{name: "group ID の不一致", ss: &scalesetapi.RunnerScaleSet{
+		{name: "group ID mismatch", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 9,
 			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
-		{name: "label なし", ss: &scalesetapi.RunnerScaleSet{
+		{name: "no labels", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 5,
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
-		{name: "label が 2 個", ss: &scalesetapi.RunnerScaleSet{
+		{name: "two labels", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 5,
 			Labels: []scalesetapi.Label{
 				{Type: "system", Name: "scale-set"},
@@ -75,12 +75,12 @@ func TestValidateScaleSet(t *testing.T) {
 			},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
-		{name: "label type が System 以外", ss: &scalesetapi.RunnerScaleSet{
+		{name: "label type is not System", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 5,
 			Labels:        []scalesetapi.Label{{Type: "Custom", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}},
-		{name: "label type が大文字の System", ss: &scalesetapi.RunnerScaleSet{
+		{name: "label type is uppercase System", ss: &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "scale-set", RunnerGroupID: 5,
 			Labels:        []scalesetapi.Label{{Type: "System", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
@@ -90,16 +90,16 @@ func TestValidateScaleSet(t *testing.T) {
 			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: false},
 		}},
-		{name: "一致する応答", ss: valid, ok: true},
+		{name: "matching response", ss: valid, ok: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateScaleSet(tt.ss, 5, "scale-set")
 			if tt.ok && err != nil {
-				t.Fatalf("一致する応答を拒否しました: %v", err)
+				t.Fatalf("rejected matching response: %v", err)
 			}
 			if !tt.ok && err == nil {
-				t.Fatalf("不正な応答が error になりません: %v", err)
+				t.Fatalf("invalid response did not return an error: %v", err)
 			}
 		})
 	}
@@ -115,41 +115,41 @@ func TestCheckScaleSetResult(t *testing.T) {
 		Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 		RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 	}
-	t.Run("不存在は warning で失敗しない", func(t *testing.T) {
+	t.Run("missing Scale Set returns a warning without failing", func(t *testing.T) {
 		result, err := checkScaleSetResult(group, nil, "scale-set")
 		if err != nil {
-			t.Fatalf("不存在は失敗にしないはずです: %v", err)
+			t.Fatalf("missing Scale Set should not fail: %v", err)
 		}
 		if result.Group != group {
-			t.Fatalf("group が結果に引き継がれていません")
+			t.Fatalf("group was not preserved in the result")
 		}
 		if result.ScaleSet != nil {
-			t.Fatalf("不存在時に ScaleSet が nil ではありません")
+			t.Fatalf("ScaleSet is non-nil when missing")
 		}
 		if result.Warning == "" {
-			t.Fatalf("不存在時に warning が設定されていません")
+			t.Fatalf("warning is not set when missing")
 		}
 	})
-	t.Run("一致する既存 Scale Set は warning なしで受理", func(t *testing.T) {
+	t.Run("matching existing Scale Set is accepted without a warning", func(t *testing.T) {
 		result, err := checkScaleSetResult(group, valid, "scale-set")
 		if err != nil {
-			t.Fatalf("一致する既存 Scale Set を拒否しました: %v", err)
+			t.Fatalf("rejected matching existing Scale Set: %v", err)
 		}
 		if result.ScaleSet != valid {
-			t.Fatalf("ScaleSet が結果に引き継がれていません")
+			t.Fatalf("ScaleSet was not preserved in the result")
 		}
 		if result.Warning != "" {
-			t.Fatalf("一致時に warning が設定されました: %q", result.Warning)
+			t.Fatalf("warning was set for a matching Scale Set: %q", result.Warning)
 		}
 	})
-	t.Run("不一致は error", func(t *testing.T) {
+	t.Run("mismatch returns an error", func(t *testing.T) {
 		mismatched := &scalesetapi.RunnerScaleSet{
 			ID: 42, Name: "other", RunnerGroupID: 5,
 			Labels:        []scalesetapi.Label{{Type: "system", Name: "scale-set"}},
 			RunnerSetting: scalesetapi.RunnerSetting{DisableUpdate: true},
 		}
 		if _, err := checkScaleSetResult(group, mismatched, "scale-set"); err == nil {
-			t.Fatalf("不一致が error になりません: %v", err)
+			t.Fatalf("mismatch did not return an error: %v", err)
 		}
 	})
 }

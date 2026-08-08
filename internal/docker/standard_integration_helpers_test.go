@@ -29,12 +29,12 @@ func cleanupManagedFixture(t *testing.T, c *Client, containerID string, identity
 		if cerrdefs.IsNotFound(err) {
 			return
 		}
-		t.Logf("managed 経路の VerifyManaged が失敗したため、test-only の強制削除へ倒します: %v", err)
+		t.Logf("managed cleanup path failed; falling back to test-only force removal: %v", err)
 		forceRemoveTestContainer(t, c, containerID, identity)
 		return
 	}
 	if _, err := c.CleanupManaged(ctx, mc, ManagedCleanupOptions{StopTimeout: 30 * time.Second}); err != nil {
-		t.Logf("CleanupManaged が失敗したため、test-only の強制削除へ倒します: %v", err)
+		t.Logf("CleanupManaged failed; falling back to test-only force removal: %v", err)
 		forceRemoveTestContainer(t, c, containerID, identity)
 	}
 }
@@ -49,7 +49,7 @@ func createUnmanagedSentinel(t *testing.T, c *Client, imageRef string) string {
 		Image: imageRef, Cmd: []string{"/bin/sleep", "600"}, Labels: map[string]string{unmanagedSentinelLabel: "1"},
 	}})
 	if err != nil {
-		t.Fatalf("unmanaged sentinel の作成に失敗しました: %v", err)
+		t.Fatalf("failed to create unmanaged sentinel: %v", err)
 	}
 	// Register cleanup here so later fixture cleanup runs first (LIFO).
 	t.Cleanup(func() {
@@ -68,16 +68,16 @@ func verifyAndRemoveUnmanagedSentinel(t *testing.T, c *Client, containerID strin
 		if cerrdefs.IsNotFound(err) {
 			return
 		}
-		t.Fatalf("unmanaged sentinel の inspect が失敗しました: %v", err)
+		t.Fatalf("failed to inspect unmanaged sentinel: %v", err)
 	}
 	if got := string(inspect.Container.State.Status); got != string(container.StateCreated) {
-		t.Fatalf("unmanaged sentinel の状態が変化しました: %q → %q", container.StateCreated, got)
+		t.Fatalf("unmanaged sentinel state changed: %q -> %q", container.StateCreated, got)
 	}
 	if got := inspect.Container.Config.Labels[unmanagedSentinelLabel]; got != "1" {
-		t.Fatalf("unmanaged sentinel の test label が変化しました: %v", inspect.Container.Config.Labels)
+		t.Fatalf("unmanaged sentinel test label changed: %v", inspect.Container.Config.Labels)
 	}
 	if _, err := c.c.ContainerRemove(ctx, containerID, mobyclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true}); err != nil && !cerrdefs.IsNotFound(err) {
-		t.Fatalf("unmanaged sentinel の削除に失敗しました: %v", err)
+		t.Fatalf("failed to remove unmanaged sentinel: %v", err)
 	}
 }
 
@@ -89,8 +89,8 @@ func verifyInspectHostConfig(t *testing.T, in container.InspectResponse, cfg *co
 
 	// Docker does not guarantee environment ordering.
 	wantEnv := map[string]bool{
-		"ACTIONS_RUNNER_INPUT_JITCONFIG=" + input.JITConfig:                                      true,
-		"ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE=1":                                   true,
+		"ACTIONS_RUNNER_INPUT_JITCONFIG=" + input.JITConfig:                           true,
+		"ACTIONS_RUNNER_RETURN_VERSION_DEPRECATED_EXIT_CODE=1":                        true,
 		"GITHUB_ACTIONS_RUNNER_EXTRA_USER_AGENT=arc-docker/" + input.UserAgentVersion: true,
 	}
 	found := 0
@@ -100,14 +100,14 @@ func verifyInspectHostConfig(t *testing.T, in container.InspectResponse, cfg *co
 		}
 	}
 	if found != len(wantEnv) {
-		t.Fatalf("daemon 上の JIT env が契約と一致しません: %v", cc.Env)
+		t.Fatalf("JIT environment on the daemon violates the contract: %v", cc.Env)
 	}
 
 	expected := cfg.Runner.HostConfig
 	if expected == nil {
-		t.Fatal("テスト設定の HostConfig が nil です")
+		t.Fatal("test HostConfig is nil")
 	}
 	if hc.Runtime != expected.Runtime || hc.NetworkMode != expected.NetworkMode {
-		t.Fatalf("daemon 上の HostConfig が設定値と一致しません: runtime=%q network=%q", hc.Runtime, hc.NetworkMode)
+		t.Fatalf("HostConfig on the daemon differs from the configuration: runtime=%q network=%q", hc.Runtime, hc.NetworkMode)
 	}
 }

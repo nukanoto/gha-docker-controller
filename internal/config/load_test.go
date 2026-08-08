@@ -62,10 +62,10 @@ func mustWriteSecret(t *testing.T, name, content string, perm os.FileMode) strin
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("秘密ファイルを作成できませんでした: %v", err)
+		t.Fatalf("failed to create secret file: %v", err)
 	}
 	if err := os.Chmod(path, perm); err != nil {
-		t.Fatalf("秘密ファイルの権限を設定できませんでした: %v", err)
+		t.Fatalf("failed to set secret file permissions: %v", err)
 	}
 	return path
 }
@@ -74,7 +74,7 @@ func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("設定ファイルを作成できませんでした: %v", err)
+		t.Fatalf("failed to create configuration file: %v", err)
 	}
 	return path
 }
@@ -88,7 +88,7 @@ func loadDoc(t *testing.T, doc string) (*Config, []Warning) {
 	t.Helper()
 	c, warnings, err := Load(writeConfig(t, doc))
 	if err != nil {
-		t.Fatalf("設定を読み込めませんでした: %v", err)
+		t.Fatalf("failed to load configuration: %v", err)
 	}
 	return c, warnings
 }
@@ -97,44 +97,44 @@ func checkErr(t *testing.T, name, wantErr string, err error) {
 	t.Helper()
 	if wantErr == "" {
 		if err != nil {
-			t.Fatalf("%s: 予期しないエラーです: %v", name, err)
+			t.Fatalf("%s: unexpected error: %v", name, err)
 		}
 		return
 	}
 	if err == nil || !strings.Contains(err.Error(), wantErr) {
-		t.Fatalf("%s: エラー %q が返りませんでした: %v", name, wantErr, err)
+		t.Fatalf("%s: error %q was not returned: %v", name, wantErr, err)
 	}
 }
 
 func TestLoad_ConfigExampleFile(t *testing.T) {
 	data, err := os.ReadFile("../../config.example.yaml")
 	if err != nil {
-		t.Fatalf("config.example.yaml を読めませんでした: %v", err)
+		t.Fatalf("failed to read config.example.yaml: %v", err)
 	}
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
 	replaced := strings.ReplaceAll(string(data), "/etc/arc-docker/github-app.pem", keyPath)
 	c, warnings, err := Load(writeConfig(t, replaced))
 	if err != nil {
-		t.Fatalf("config.example.yaml を読み込めませんでした: %v", err)
+		t.Fatalf("failed to load config.example.yaml: %v", err)
 	}
 	if len(warnings) != 0 {
-		t.Fatalf("example に警告があります: %+v", warnings)
+		t.Fatalf("example produced warnings: %+v", warnings)
 	}
 	if c.GitHub.URL != "https://github.com" || c.GitHub.Owner != "your-organization" ||
 		c.GitHub.App.AppID != 123456 || !bytes.Equal(c.GitHub.App.PrivateKey, []byte(keyPEM)) {
-		t.Fatalf("GitHub 設定の正規化結果が不正です: %+v", c.GitHub)
+		t.Fatalf("normalized GitHub configuration is invalid: %+v", c.GitHub)
 	}
 	if c.ScaleSet != (ScaleSetConfig{Name: "my-arc-docker-runner", RunnerGroup: "Default", MinRunners: 0, MaxRunners: 4}) {
-		t.Fatalf("Scale Set 設定の正規化結果が不正です: %+v", c.ScaleSet)
+		t.Fatalf("normalized Scale Set configuration is invalid: %+v", c.ScaleSet)
 	}
 	if c.Docker != (DockerConfig{Host: DefaultDockerHost, PullPolicy: DefaultPullPolicy}) {
-		t.Fatalf("Docker 設定の正規化結果が不正です: %+v", c.Docker)
+		t.Fatalf("normalized Docker configuration is invalid: %+v", c.Docker)
 	}
 	if c.Runner.Image == "" || c.Runner.HostConfig == nil {
-		t.Fatalf("runner 設定の正規化結果が不正です: %+v", c.Runner)
+		t.Fatalf("normalized runner configuration is invalid: %+v", c.Runner)
 	}
 	if c.Shutdown.BusyPolicy != ShutdownPolicyLeave || c.Log.Format != LogFormatJSON || c.Health.Listen != DefaultHealthListen {
-		t.Fatalf("health、shutdown、log の既定値が不正です: %+v %+v %+v", c.Health, c.Shutdown, c.Log)
+		t.Fatalf("health, shutdown, and log defaults are invalid: %+v %+v %+v", c.Health, c.Shutdown, c.Log)
 	}
 }
 
@@ -142,7 +142,7 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 	keyPath := mustWriteSecret(t, "key.pem", keyPEM, 0600)
 	c, warnings := loadDoc(t, strings.ReplaceAll(minimalConfigYAML, "__KEY__", keyPath))
 	if len(warnings) != 0 {
-		t.Fatalf("予期しない警告があります: %+v", warnings)
+		t.Fatalf("unexpected warnings: %+v", warnings)
 	}
 	wants := []struct {
 		name string
@@ -161,7 +161,7 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 	}
 	for _, tt := range wants {
 		if !reflect.DeepEqual(tt.got, tt.want) {
-			t.Fatalf("%s の既定値が不正です: got=%+v want=%+v", tt.name, tt.got, tt.want)
+			t.Fatalf("%s default is invalid: got=%+v want=%+v", tt.name, tt.got, tt.want)
 		}
 	}
 }
@@ -171,10 +171,10 @@ func TestLoad_RepoScopeWithPAT(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", token)
 	c, warnings := loadDoc(t, patRepoYAML)
 	if len(warnings) != 0 || c.GitHub.Token != token || c.GitHub.App != nil {
-		t.Fatal("PAT 認証の読み込み結果が不正です")
+		t.Fatal("PAT authentication result is invalid")
 	}
 	if got := c.GitHubConfigURL(); got != "https://github.com/my-org/my-repo" {
-		t.Fatalf("GitHubConfigURL が不正です: %q", got)
+		t.Fatalf("GitHubConfigURL is invalid: %q", got)
 	}
 }
 

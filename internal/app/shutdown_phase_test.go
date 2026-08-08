@@ -23,10 +23,10 @@ func TestShutdown_WaitListenerTimesOutAtDeadline(t *testing.T) {
 
 	start := time.Now()
 	if a.waitListener(ctx) {
-		t.Fatalf("deadline 前に waitListener が true を返しました")
+		t.Fatalf("waitListener returned true before the deadline")
 	}
 	if elapsed := time.Since(start); elapsed < 50*time.Millisecond {
-		t.Fatalf("waitListener が deadline より早く戻りました: %v", elapsed)
+		t.Fatalf("waitListener returned before the deadline: %v", elapsed)
 	}
 	// The helper goroutine must still be joined after the timeout.
 	close(release)
@@ -38,7 +38,7 @@ func TestShutdown_WaitListenerTimesOutAtDeadline(t *testing.T) {
 	select {
 	case <-wgDone:
 	case <-time.After(time.Second):
-		t.Fatalf("waitListener の内部 goroutine が終了しませんでした")
+		t.Fatalf("waitListener helper goroutine did not finish")
 	}
 }
 
@@ -53,10 +53,10 @@ func TestShutdown_WaitListenerReturnsTrueWhenDrained(t *testing.T) {
 	start := time.Now()
 	close(release)
 	if !a.waitListener(ctx) {
-		t.Fatalf("wg 完了後に waitListener が false を返しました")
+		t.Fatalf("waitListener returned false after the WaitGroup drained")
 	}
 	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
-		t.Fatalf("waitListener の完了に時間がかかりすぎました: %v", elapsed)
+		t.Fatalf("waitListener took too long to complete: %v", elapsed)
 	}
 }
 
@@ -68,12 +68,12 @@ func TestShutdown_ListenerJoinTimeout(t *testing.T) {
 		grace     config.Duration
 		want      time.Duration
 	}{
-		{name: "provisioning が長ければ provisioning", provision: config.Duration(90 * time.Second), grace: config.Duration(30 * time.Second), want: 90 * time.Second},
-		{name: "cleanup が長ければ cleanup", provision: config.Duration(30 * time.Second), grace: config.Duration(90 * time.Second), want: 90 * time.Second},
-		{name: "等しければその値", provision: config.Duration(60 * time.Second), grace: config.Duration(60 * time.Second), want: 60 * time.Second},
-		{name: "provisioning 非正は既定 5 分と比較", provision: 0, grace: config.Duration(10 * time.Second), want: time.Duration(config.DefaultProvisioningTimeout)},
-		{name: "grace 非正は既定 2 分と比較", provision: config.Duration(10 * time.Second), grace: 0, want: time.Duration(config.DefaultShutdownGrace)},
-		{name: "両方非正なら既定の大きい方", provision: -1, grace: -1, want: time.Duration(config.DefaultProvisioningTimeout)},
+		{name: "longer provisioning timeout wins", provision: config.Duration(90 * time.Second), grace: config.Duration(30 * time.Second), want: 90 * time.Second},
+		{name: "longer cleanup timeout wins", provision: config.Duration(30 * time.Second), grace: config.Duration(90 * time.Second), want: 90 * time.Second},
+		{name: "equal timeouts keep their value", provision: config.Duration(60 * time.Second), grace: config.Duration(60 * time.Second), want: 60 * time.Second},
+		{name: "non-positive provisioning uses the five-minute default", provision: 0, grace: config.Duration(10 * time.Second), want: time.Duration(config.DefaultProvisioningTimeout)},
+		{name: "non-positive grace uses the two-minute default", provision: config.Duration(10 * time.Second), grace: 0, want: time.Duration(config.DefaultShutdownGrace)},
+		{name: "both non-positive values use the larger default", provision: -1, grace: -1, want: time.Duration(config.DefaultProvisioningTimeout)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,7 +82,7 @@ func TestShutdown_ListenerJoinTimeout(t *testing.T) {
 				Shutdown: config.ShutdownConfig{Grace: tc.grace},
 			})
 			if got := a.listenerJoinTimeout(); got != tc.want {
-				t.Fatalf("listenerJoinTimeout が期待と異なります: got %v want %v", got, tc.want)
+				t.Fatalf("listenerJoinTimeout differs from expectation: got %v want %v", got, tc.want)
 			}
 		})
 	}
@@ -92,10 +92,10 @@ func TestShutdown_ListenerJoinTimeout(t *testing.T) {
 func TestShutdown_JoinTimeoutWarningIsFixed(t *testing.T) {
 	for _, want := range []string{listenerJoinTimeoutWarning, scalerJoinTimeoutWarning} {
 		if want == "" {
-			t.Fatalf("join timeout warning が空です")
+			t.Fatalf("join timeout warning is empty")
 		}
 		if strings.ContainsAny(want, "{}") {
-			t.Fatalf("join timeout warning に動的な値が含まれています: %q", want)
+			t.Fatalf("join timeout warning contains dynamic data: %q", want)
 		}
 	}
 }
@@ -113,10 +113,10 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 	a.store = store
 	hs, err := health.New("127.0.0.1:0", store, a.logger)
 	if err != nil {
-		t.Fatalf("health.New が error を返した: %v", err)
+		t.Fatalf("health.New returned an error: %v", err)
 	}
 	if err := hs.Start(); err != nil {
-		t.Fatalf("health.Start が error を返した: %v", err)
+		t.Fatalf("health.Start returned an error: %v", err)
 	}
 	a.health = hs
 	store.SetSessionRunning(true)
@@ -134,27 +134,27 @@ func TestShutdown_ReadinessDropsImmediately(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for store.Ready() {
 		if time.Now().After(deadline) {
-			t.Fatalf("shutdown の cancel 後も readiness が false になりませんでした")
+			t.Fatalf("readiness did not become false after shutdown cancellation")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	resp, err := http.Get("http://" + hs.Addr().String() + "/readyz")
 	if err != nil {
-		t.Fatalf("/readyz への GET が error を返した: %v", err)
+		t.Fatalf("GET /readyz returned an error: %v", err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("shutdown 中の /readyz が %d を返しました (want 503)", resp.StatusCode)
+		t.Fatalf("/readyz returned %d during shutdown (want 503)", resp.StatusCode)
 	}
 
 	close(release)
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("shutdown が error を返しました: %v", err)
+			t.Fatalf("shutdown returned an error: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatalf("shutdown が完了しませんでした")
+		t.Fatalf("shutdown did not complete")
 	}
 }
 
@@ -173,10 +173,10 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	a.store = store
 	hs, err := health.New("127.0.0.1:0", store, a.logger)
 	if err != nil {
-		t.Fatalf("health.New が error を返した: %v", err)
+		t.Fatalf("health.New returned an error: %v", err)
 	}
 	if err := hs.Start(); err != nil {
-		t.Fatalf("health.Start が error を返した: %v", err)
+		t.Fatalf("health.Start returned an error: %v", err)
 	}
 	a.health = hs
 	// Keep a handler-like goroutine alive past the join deadline.
@@ -190,19 +190,19 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	select {
 	case err := <-done:
 		if err == nil || !errors.Is(err, errListenerJoinTimeout) {
-			t.Fatalf("join timeout の shutdown が errListenerJoinTimeout を返しません: %v", err)
+			t.Fatalf("shutdown did not return errListenerJoinTimeout after the join timeout: %v", err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatalf("shutdown が join timeout 後も return しませんでした")
+		t.Fatalf("shutdown did not return after the join timeout")
 	}
 
 	resp, err := http.Get("http://" + hs.Addr().String() + "/readyz")
 	if err != nil {
-		t.Fatalf("join timeout 後に health server が応答しませんでした: %v", err)
+		t.Fatalf("health server did not respond after the join timeout: %v", err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("join timeout 後の /readyz が %d を返しました (want 503)", resp.StatusCode)
+		t.Fatalf("/readyz returned %d after the join timeout (want 503)", resp.StatusCode)
 	}
 	close(release)
 	wgDone := make(chan struct{})
@@ -213,12 +213,12 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 	select {
 	case <-wgDone:
 	case <-time.After(time.Second):
-		t.Fatalf("gate 解放後も listener goroutine が終了しませんでした")
+		t.Fatalf("listener goroutine did not finish after releasing the gate")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := hs.Shutdown(ctx); err != nil {
-		t.Fatalf("health.Shutdown が error を返した: %v", err)
+		t.Fatalf("health.Shutdown returned an error: %v", err)
 	}
 }
 
@@ -226,19 +226,19 @@ func TestShutdown_ListenerJoinTimeoutSkipsRemainingPhases(t *testing.T) {
 func TestStartup_ReadinessLifecycle(t *testing.T) {
 	store := health.NewStore()
 	if store.Ready() {
-		t.Fatalf("起動直後の store が ready です")
+		t.Fatalf("store is ready immediately after startup")
 	}
 	store.SetSessionRunning(true)
 	if store.Ready() {
-		t.Fatalf("listener 未稼働で ready になりました")
+		t.Fatalf("store became ready while the listener was stopped")
 	}
 	store.SetListenerRunning(true)
 	if !store.Ready() {
-		t.Fatalf("session と listener の両方稼働で ready になりません")
+		t.Fatalf("store did not become ready while session and listener were running")
 	}
 	store.SetListenerRunning(false)
 	if store.Ready() {
-		t.Fatalf("listener 停止後も ready のままです")
+		t.Fatalf("store remained ready after the listener stopped")
 	}
 }
 
@@ -255,10 +255,10 @@ func TestShutdown_CompletesWithoutComponents(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("shutdown が error を返しました: %v", err)
+			t.Fatalf("shutdown returned an error: %v", err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatalf("shutdown が完了しませんでした")
+		t.Fatalf("shutdown did not complete")
 	}
 }
 
@@ -287,17 +287,17 @@ func TestShutdown_WaitsForListenerWithoutResidualGrace(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("shutdown が error を返しました: %v", err)
+			t.Fatalf("shutdown returned an error: %v", err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatalf("shutdown が完了しませんでした")
+		t.Fatalf("shutdown did not complete")
 	}
 	elapsed := time.Since(start)
 	if elapsed >= grace/2 {
-		t.Fatalf("shutdown が残余 grace を待ちました: %v (grace %v)", elapsed, grace)
+		t.Fatalf("shutdown waited through the remaining grace period: %v (grace %v)", elapsed, grace)
 	}
 	if elapsed < 40*time.Millisecond {
-		t.Fatalf("shutdown が listener の終了を待ちませんでした: %v", elapsed)
+		t.Fatalf("shutdown did not wait for the listener to finish: %v", elapsed)
 	}
 }
 
@@ -320,10 +320,10 @@ func TestShutdown_PhaseContextsAreFresh(t *testing.T) {
 		t.Helper()
 		deadline, ok := ctx.Deadline()
 		if !ok {
-			t.Fatalf("%s phase の context に deadline がありません", name)
+			t.Fatalf("%s phase context has no deadline", name)
 		}
 		if d := time.Until(deadline); d < want-100*time.Millisecond || d > want+100*time.Millisecond {
-			t.Fatalf("%s phase の deadline が期待と異なります: %v (want %v)", name, d, want)
+			t.Fatalf("%s phase deadline differs from expectation: %v (want %v)", name, d, want)
 		}
 	}
 	checkDeadline("join", joinCtx, provisioning)
@@ -334,7 +334,7 @@ func TestShutdown_PhaseContextsAreFresh(t *testing.T) {
 	// Cancelling one phase must not cancel later phases.
 	joinCancel()
 	if joinCtx.Err() == nil {
-		t.Fatalf("join phase の cancel が反映されていません")
+		t.Fatalf("join phase cancellation was not applied")
 	}
 	for _, phase := range []struct {
 		name string
@@ -345,10 +345,10 @@ func TestShutdown_PhaseContextsAreFresh(t *testing.T) {
 		{name: "session", ctx: sessionCtx},
 	} {
 		if err := phase.ctx.Err(); err != nil {
-			t.Fatalf("%s phase の context が join の cancel の影響を受けました: %v", phase.name, err)
+			t.Fatalf("%s phase context was affected by join cancellation: %v", phase.name, err)
 		}
 		if _, ok := phase.ctx.Deadline(); !ok {
-			t.Fatalf("%s phase の context が fresh ではありません", phase.name)
+			t.Fatalf("%s phase context is not independent", phase.name)
 		}
 	}
 }

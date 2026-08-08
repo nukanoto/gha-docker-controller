@@ -25,7 +25,7 @@ func TestSanitizeName_AllowedCharactersAndExplicitInputs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := SanitizeName(tt.input); got != tt.want {
-				t.Fatalf("sanitize 結果が不正です: 入力 %q、期待値 %q、実測値 %q", tt.input, tt.want, got)
+				t.Fatalf("sanitize result is incorrect: input=%q want=%q got=%q", tt.input, tt.want, got)
 			}
 		})
 	}
@@ -48,11 +48,11 @@ func TestSanitizeName_ExplicitRandomInputRemainsSafe(t *testing.T) {
 				(character >= '0' && character <= '9') ||
 				character == '_' || character == '-' || character == '.'
 			if !allowed {
-				t.Fatalf("ランダム入力 %d から許可外文字 %q が出力されました: 入力 %q、出力 %q", caseIndex, character, value, got)
+				t.Fatalf("random input %d produced disallowed character %q: input=%q output=%q", caseIndex, character, value, got)
 			}
 		}
 		if got != SanitizeName(value) {
-			t.Fatalf("sanitize が決定的ではありません: 入力 %q、出力 %q", value, got)
+			t.Fatalf("sanitize is not deterministic: input=%q output=%q", value, got)
 		}
 	}
 }
@@ -61,16 +61,16 @@ func TestSanitizeName_ExplicitRandomInputRemainsSafe(t *testing.T) {
 func TestContainerName_AtMost63BytesAfterSanitization(t *testing.T) {
 	name := ContainerName(strings.Repeat("日本語/VeryLong.Scale_Set-", 20), 123456789, "ABCDEF12-extra")
 	if len(name) > containerNameLimit {
-		t.Fatalf("container name が 63 byte を超えています: byte 数 %d、名前 %q", len(name), name)
+		t.Fatalf("container name exceeds 63 bytes: bytes=%d name=%q", len(name), name)
 	}
 	if !utf8.ValidString(name) {
-		t.Fatalf("container name が不正な UTF-8 です: %q", name)
+		t.Fatalf("container name is not valid UTF-8: %q", name)
 	}
 	if !strings.HasPrefix(name, containerNamePrefix) {
-		t.Fatalf("container name の prefix が不正です: %q", name)
+		t.Fatalf("container name has an invalid prefix: %q", name)
 	}
 	if !strings.HasSuffix(name, "-abcdef12") {
-		t.Fatalf("suffix が正規化されていません: %q", name)
+		t.Fatalf("suffix is not normalized: %q", name)
 	}
 
 	for _, character := range name {
@@ -78,7 +78,7 @@ func TestContainerName_AtMost63BytesAfterSanitization(t *testing.T) {
 			(character >= '0' && character <= '9') ||
 			character == '-' || character == '_' || character == '.'
 		if !allowed {
-			t.Fatalf("container name に許可外文字 %q があります: %q", character, name)
+			t.Fatalf("container name contains disallowed character %q: %q", character, name)
 		}
 	}
 }
@@ -86,10 +86,10 @@ func TestContainerName_AtMost63BytesAfterSanitization(t *testing.T) {
 // TestRunnerName_SanitizedScaleSetAndExplicitHexSuffix covers canonical names.
 func TestRunnerName_SanitizedScaleSetAndExplicitHexSuffix(t *testing.T) {
 	if got, want := RunnerName("Scale Set/Prod", "ABC-def-123456789"), "scale-set-prod-abcdef123456"; got != want {
-		t.Fatalf("runner name が不正です: 期待値 %q、実測値 %q", want, got)
+		t.Fatalf("runner name is invalid: want=%q got=%q", want, got)
 	}
 	if got, want := RunnerName("日本語", ""), "scale-set-000000000000"; got != want {
-		t.Fatalf("空 suffix の runner name が不正です: 期待値 %q、実測値 %q", want, got)
+		t.Fatalf("runner name with an empty suffix is invalid: want=%q got=%q", want, got)
 	}
 }
 
@@ -109,7 +109,7 @@ func TestValidRunnerName_CanonicalFormAcceptance(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if name := RunnerName(tt.scaleSet, tt.suffix); !ValidRunnerName(name) {
-				t.Fatalf("RunnerName 出力が拒否されました: %q", name)
+				t.Fatalf("RunnerName output was rejected: %q", name)
 			}
 		})
 	}
@@ -131,7 +131,7 @@ func TestValidRunnerName_ExplicitRandomOutputsAlwaysAccepted(t *testing.T) {
 		}
 		name := RunnerName(scaleSet.String(), suffix.String())
 		if !ValidRunnerName(name) {
-			t.Fatalf("ランダム入力から生成した RunnerName 出力が拒否されました: scaleSet=%q suffix=%q、出力 %q", scaleSet.String(), suffix.String(), name)
+			t.Fatalf("RunnerName output generated from random input was rejected: scaleSet=%q suffix=%q output=%q", scaleSet.String(), suffix.String(), name)
 		}
 	}
 }
@@ -160,11 +160,11 @@ func TestValidRunnerName_MalformedRejectionTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if ValidRunnerName(tt.input) {
-				t.Fatalf("malformed runner name が受理されました: %q", tt.input)
+				t.Fatalf("malformed runner name was accepted: %q", tt.input)
 			}
 		})
 	}
 	if !ValidRunnerName(valid) {
-		t.Fatalf("canonical runner name が拒否されました: %q", valid)
+		t.Fatalf("canonical runner name was rejected: %q", valid)
 	}
 }
