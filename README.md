@@ -16,9 +16,14 @@
 
 ## Installation
 
-### GitHub Authentication
+You can run the application using Docker Compose.
 
-#### GitHub App
+```yaml
+```
+
+## GitHub Authentication
+
+### GitHub App
 
 Grant the following permissions:
 
@@ -30,7 +35,7 @@ Grant the following permissions:
   * `Administration: Read and write`
   * `Metadata: Read-only`
 
-#### PAT
+### PAT
 
 Pass the PAT through the `GITHUB_TOKEN` environment variable.
 
@@ -48,16 +53,9 @@ Permissions required for a fine-grained PAT:
 export GITHUB_TOKEN=github_pat_xxxxxxxxxxxx
 ```
 
-### Run
-
-You can run the application using Docker Compose.
-
-```yaml
-```
-
 ## Configuration
 
-The following is an example of the `standard` profile using a GitHub App.
+The following is an example configuration using a GitHub App.
 
 ```yaml
 github:
@@ -68,28 +66,25 @@ github:
     id: 123456
     installationId: 654321
     privateKeyFile: /etc/gha-docker-controller/github-app.pem
+  # repository: "<repository name>"
 
 scaleSet:
-  name: production
+  name: my-self-hosted-runner
   runnerGroup: default
   minRunners: 0
   maxRunners: 4
 
 docker:
   host: unix:///var/run/docker.sock
-  runtime: runsc
-  network: bridge
   pullPolicy: if-not-present
 
 runner:
-  image: ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda
-  profile: standard
-  cpu: "2"
-  memory: 4GiB
-  memorySwap: 4GiB
-  pidsLimit: 512
-  capDrop: ["ALL"]
-  noNewPrivileges: true
+  image: ghcr.io/actions/actions-runner@sha256:<digest>
+  # HostConfig keys use Docker's API names without case sensitivity.
+  hostConfig:
+    pidsLimit: 512
+  provisioningTimeout: 5m
+  stopTimeout: 30s
 
 health:
   listen: 127.0.0.1:8080
@@ -112,18 +107,6 @@ github:
   scope: organization
   owner: your-organization
 ```
-
-Keep the following points in mind when configuring the application:
-
-* For repository scope, also specify `github.repository`
-* `scaleSet.name` is the value used for `runs-on` in workflows
-* `maxRunners` must be at least 1 and greater than or equal to `minRunners`
-* `memorySwap` must be greater than or equal to `memory`
-* `latest` cannot be used for `runner.image`
-* The `standard` profile requires either a version tag or a digest
-* The `dind-runner` profile requires a digest
-
-Examples of resource, DNS, extra hosts, tmpfs, ulimit, seccomp, and AppArmor settings are available in `config.example.yaml`.
 
 ## Preflight Check
 
@@ -155,17 +138,23 @@ jobs:
           echo "runner is ready"
 ```
 
-### `dind-runner` Profile
+### DinD Usage
 
-The `dind-runner` profile starts an independent Docker daemon inside the runner.
+To use Docker-in-Docker, provide an image that starts an independent Docker
+daemon and configure the image's requirements under `runner.hostConfig`.
 
-Configure the host's `/etc/docker/daemon.json` as follows:
+The repository includes an example Dockerfile in
+[`images/dind-runner/`](images/dind-runner/).
+
+### runsc (gVisor)
+
+Configure the host's `/etc/docker/daemon.json` as follows.
 
 ```json
 {
   "runtimes": {
     "runsc": {
-      "path": "/usr/local/bin/runsc",
+      "path": "/usr/bin/runsc",
       "runtimeArgs": [
         "--net-raw",
         "--allow-packet-socket-write"
@@ -175,42 +164,35 @@ Configure the host's `/etc/docker/daemon.json` as follows:
 }
 ```
 
-Modify `config.yaml` as follows:
+Configure the `runner` section in `config.yaml` as follows:
 
 ```yaml
-scaleSet:
-  name: production-dind
-  runnerGroup: default
-  minRunners: 0
-  maxRunners: 2
-
-docker:
-  host: unix:///var/run/docker.sock
-  runtime: runsc
-  network: bridge
-  pullPolicy: always
-
 runner:
   image: ghcr.io/example/gha-dind-runner@sha256:<digest>
-  profile: dind-runner
-  cpu: "4"
-  memory: 8GiB
-  memorySwap: 8GiB
-  pidsLimit: 1024
-  capDrop: ["ALL"]
-  noNewPrivileges: true
-
-dindRunner:
-  storage: tmpfs
-  storageSize: 16GiB
+  hostConfig:
+    runtime: runsc
+    capDrop: [ALL]
+    capAdd: [NET_ADMIN, NET_RAW, SYS_ADMIN]
+    securityOpt: [no-new-privileges]
+    mounts:
+      - type: tmpfs
+        target: /var/lib/docker
+        tmpfsOptions:
+          sizeBytes: 17179869184
+          mode: 448
+    pidsLimit: 1024
 ```
 
+The required capabilities and `/var/lib/docker` storage depend on the image
+and workload. This example only sets `pidsLimit` as a resource limit; CPU and
+memory are optional.
+
 > [!NOTE]
-> The inner Docker daemon does not use iptables or ip6tables.
+> The example image disables iptables and ip6tables for the Docker daemon inside the runner.
 >
 > `services.<name>.ports`, `docker run -p`, `--publish`, and `--expose` cannot be used.
 >
-> When using Docker Compose, specify `network_mode: host` for each service.
+> Specify `options: --network host` for containers.
 
 ## Build
 

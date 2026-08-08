@@ -25,22 +25,7 @@ runner:
   image: ghcr.io/actions/actions-runner@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda
   # HostConfig keys use Docker's API names without case sensitivity.
   hostConfig:
-    runtime: runsc
-    networkMode: bridge
-    capDrop: [ALL]
-    capAdd: []
-    nanoCPUs: 2000000000
-    memory: 4294967296
-    memorySwap: 4294967296
     pidsLimit: 512
-    dns: [1.1.1.1]
-    tmpfs:
-      /run: "size=67108864"
-    sysctls:
-      net.ipv4.ip_forward: "0"
-    restartPolicy:
-      name: "no"
-    init: true
   provisioningTimeout: 5m
   stopTimeout: 30s
 

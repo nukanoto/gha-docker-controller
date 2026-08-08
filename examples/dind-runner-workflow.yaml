@@ -1,7 +1,7 @@
-# Example workflow for the dind-runner profile of gha-docker-controller.
+# Example workflow for a DinD image configured through runner.hostConfig.
 #
 # This workflow runs inner Docker build / compose / container / service on a
-# dind-runner profile runner (a separate dockerd inside a runsc sandbox).
+# runner with a separate dockerd inside a runsc sandbox.
 # Commit it to .github/workflows/ of a dedicated repository to use it.
 #
 # Prerequisites:
@@ -20,8 +20,9 @@
 #     only explicit localhost ports.
 #   - Install compose as a standalone binary pinned by version + sha256
 #     (never latest).
-#   - Set dindRunner.storageSize in the E2E config large enough to cover
-#     pulling and building inner images (for example 16GiB).
+#   - Set runner.hostConfig.mounts large enough to cover pulling and building
+#     inner images (for example 16GiB). CPU and memory limits are optional;
+#     pidsLimit is the basic resource limit.
 name: gha-docker-controller dind docker example
 
 on:

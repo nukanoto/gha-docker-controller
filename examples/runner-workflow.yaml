@@ -1,8 +1,8 @@
 # Minimal example workflow for gha-docker-controller.
 # The Scale Set System label matches the Scale Set name.
 # Set runs-on to the same value as scaleSet.name in the config.
-# This workflow targets standard profile runners; see
-# examples/dind-runner-workflow.yaml for the dind-runner profile example.
+# This workflow targets the runner image and HostConfig in the controller
+# configuration.
 name: gha-docker-controller example
 
 on:
