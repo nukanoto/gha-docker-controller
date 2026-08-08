@@ -10,7 +10,7 @@
 #     Set names.
 #   - The job container image is set by the required workflow_dispatch input
 #    dind_image. Always enter the project dind image
-#     (images/dind-runner/) in repository@sha256:<64 lowercase hex> digest
+#     (images/dind-runner-runsc/) in repository@sha256:<64 lowercase hex> digest
 #     form. The runner overrides the job container entrypoint to tail, so
 #     dockerd does not start inside the job container. The image must have
 #     docker CLI, git, curl, and bash.
@@ -32,7 +32,7 @@ on:
         # Required input. No default.
         description: >-
           job container に使う project の dind image
-          (images/dind-runner/) を repository@sha256:<64 lowercase hex>
+          (images/dind-runner-runsc/) を repository@sha256:<64 lowercase hex>
           形式の digest で指定する。
         required: true
         type: string

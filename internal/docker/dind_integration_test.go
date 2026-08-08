@@ -109,7 +109,7 @@ func prepareDindImage(t *testing.T, c *Client) (imageRef string) {
 	}
 	contextDir := os.Getenv(dindContextEnv)
 	if contextDir == "" {
-		contextDir = "../../images/dind-runner"
+		contextDir = "../../images/dind-runner-runsc"
 	}
 	tag := fmt.Sprintf("ghadc-test/dind-integration:%012x", rand.Uint64())
 	buildDindImage(t, c, contextDir, tag)
